@@ -1,6 +1,7 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
+# Build y deploy de la plataforma de items (FastAPI + React) a la Azure Web App "items".
+# Un solo servicio: el build de React se copia a backend/static y FastAPI lo sirve;
+# /api/* va a la API (ver plataforma-web/backend/app/main.py -> servidor).
+# Docs: https://github.com/Azure/webapps-deploy  ·  https://aka.ms/python-webapps-actions
 
 name: Build and deploy Python app to Azure Web App - items
 
@@ -19,33 +20,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- Frontend (React + Vite) ---
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: plataforma-web/frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: plataforma-web/frontend
+        run: |
+          npm ci
+          npm run build
+
+      # --- Paquete a desplegar: solo el backend + el frontend compilado ---
+      # (no viajan los scripts de la raiz, sql/ ni la documentacion)
+      - name: Assemble deployment package
+        run: |
+          mkdir deploy
+          cp -r plataforma-web/backend/app plataforma-web/backend/requirements.txt deploy/
+          cp -r plataforma-web/frontend/dist deploy/static
+
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 🛠️ Local Build Section (Optional)
-      # The following section in your workflow is designed to catch build issues early on the client side, before deployment. This can be helpful for debugging and validation. However, if this step significantly increases deployment time and early detection is not critical for your workflow, you may remove this section to streamline the deployment process.
-      - name: Create and Start virtual environment and Install dependencies
+      # Antes de desplegar: las dependencias instalan y la app importa sin .env
+      # (en Azure la configuracion llega por las variables de entorno de la Web App).
+      - name: Install dependencies and check the app
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
         run: |
           python -m venv antenv
           source antenv/bin/activate
-          pip install -r requirements.txt
-                
-      # By default, when you enable GitHub CI/CD integration through the Azure portal, the platform automatically sets the SCM_DO_BUILD_DURING_DEPLOYMENT application setting to true. This triggers the use of Oryx, a build engine that handles application compilation and dependency installation (e.g., pip install) directly on the platform during deployment. Hence, we exclude the antenv virtual environment directory from the deployment artifact to reduce the payload size. 
+          pip install -r deploy/requirements.txt
+          cd deploy
+          python -c "import app.main as m; assert m.servidor is not m.app, 'falta static/index.html'"
+
+      # Con SCM_DO_BUILD_DURING_DEPLOYMENT=true (lo pone Azure) Oryx hace el pip install
+      # en el servidor; por eso antenv (que queda fuera de deploy/) no viaja.
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
-          path: |
-            .
-            !antenv/
-
-      # 🚫 Opting Out of Oryx Build
-      # If you prefer to disable the Oryx build process during deployment, follow these steps:
-      # 1. Remove the SCM_DO_BUILD_DURING_DEPLOYMENT app setting from your Azure App Service Environment variables.
-      # 2. Refer to sample workflows for alternative deployment strategies: https://github.com/Azure/actions-workflow-samples/tree/master/AppService
-      
+          path: deploy/
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,7 +79,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: python-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -73,4 +93,5 @@ jobs:
         with:
           app-name: 'items'
           slot-name: 'Production'
-          
+          # Un solo proceso a proposito: los cargues de planeacion usan un candado en memoria.
+          startup-command: 'python -m uvicorn app.main:servidor --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"'

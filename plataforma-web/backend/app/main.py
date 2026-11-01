@@ -4,9 +4,14 @@ Punto de entrada del backend.
 
 Correr con:  uvicorn app.main:app --reload
 Documentacion interactiva en /docs
+En Azure (frontend + API en un solo servicio):  uvicorn app.main:servidor
 """
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import (routes_auth, routes_catalogo, routes_config, routes_migracion, routes_planeacion,
                      routes_roles, routes_solicitudes)
@@ -56,3 +61,44 @@ def health():
     except Exception as exc:
         base = f"error: {type(exc).__name__}"
     return {"status": "ok", "base_datos": base}
+
+
+# --- produccion: frontend + API en un solo servicio (Azure App Service) -------
+# El deploy copia el build del frontend (vite build) a backend/static. Igual que el
+# proxy de Vite en desarrollo, /api/* llega a la API sin el prefijo; lo demas es la
+# SPA: una ruta del navegador que no es un archivo (/seguimiento, /usuarios...)
+# devuelve index.html y React Router la resuelve.
+ESTATICOS = Path(__file__).resolve().parent.parent / "static"
+
+
+class _Spa(StaticFiles):
+    async def get_response(self, path, scope):
+        try:
+            respuesta = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            respuesta = await super().get_response("index.html", scope)
+        if respuesta.media_type == "text/html":
+            # index.html siempre se revalida: despues de un deploy apunta a los assets nuevos
+            respuesta.headers["Cache-Control"] = "no-cache"
+        return respuesta
+
+
+def _con_frontend(api, carpeta: Path):
+    spa = _Spa(directory=carpeta, html=True)
+
+    async def asgi(scope, receive, send):
+        if scope["type"] == "http":
+            ruta = scope["path"]
+            if ruta != "/api" and not ruta.startswith("/api/"):
+                return await spa(scope, receive, send)
+            scope = {**scope, "path": ruta[4:] or "/", "root_path": scope.get("root_path", "") + "/api"}
+            if scope.get("raw_path"):
+                scope["raw_path"] = scope["raw_path"][4:] or b"/"
+        await api(scope, receive, send)   # incluye "lifespan": el arranque de la API corre igual
+
+    return asgi
+
+
+servidor = _con_frontend(app, ESTATICOS) if (ESTATICOS / "index.html").exists() else app

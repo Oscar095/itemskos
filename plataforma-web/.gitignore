@@ -4,3 +4,6 @@ backend/**/__pycache__/
 backend/venv/
 frontend/node_modules/
 frontend/dist/
+
+# build del frontend que el deploy copia al backend
+backend/static/

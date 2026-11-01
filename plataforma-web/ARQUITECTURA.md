@@ -311,6 +311,22 @@ permisos, configuración, etapas y los catálogos de Siesa. Respaldo JSON en
 Lo creado en Siesa no se toca: el item SKU 51162 (VASO 7 OZ · K2020 BUTHER · K012) y las
 marcas K2019/K2020 siguen allá.
 
+## Despliegue en Azure (2026-11-01)
+
+Web App **items** (Linux, Python 3.11), desplegada por GitHub Actions
+(`.github/workflows/main_items.yml`) en cada push a `main`. Un solo servicio: el build
+de React (`vite build`) se copia a `backend/static` y FastAPI lo sirve; `/api/*` llega a
+la API sin el prefijo, igual que con el proxy de Vite (`app.main:servidor`). El paquete
+solo lleva `app/`, `requirements.txt` y `static/`; Oryx hace el `pip install` en Azure.
+
+- Arranque (lo fija el workflow): `python -m uvicorn app.main:servidor --host 0.0.0.0 --port 8000`.
+  Un solo proceso a propósito: el candado de los cargues de planeación vive en memoria.
+- Configuración: no hay `.env` en Azure; las claves de `backend/.env.example` van como
+  variables de entorno de la Web App (con `COOKIE_SECURE=1`).
+- El firewall de Azure SQL debe dejar entrar a la Web App.
+- La sincronización del catálogo (`python -m app.siesa.sync`, ~10 min) sigue siendo manual:
+  se puede correr desde un PC con el `.env`, escribe en la misma base.
+
 ## Bloqueado, por que, y que se necesita
 
 | Bloqueo | Bloquea | Que hace falta |
