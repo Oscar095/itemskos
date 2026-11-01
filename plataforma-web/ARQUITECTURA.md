@@ -261,8 +261,10 @@ para que las apps de KOS se vean y administren igual.
 - **Correo obligatorio** al crear un usuario (único, en minúsculas): será el destino de
   las notificaciones de avance del workflow de n8n. Los usuarios anteriores sin correo
   (hoy solo `oscar`) se completan en *Editar*, que ya no deja guardar sin correo.
-- **Cargo**: Comercial | Diseño | Producción (`seguridad.CARGOS`; Planeación va en
-  Producción). Es el área de la persona; el **rol** solo define permisos.
+- **Cargo**: lista de *Configuración* (sembrada con Comercial, Diseño y Producción;
+  Planeación va en Producción). Es el área de la persona; el **rol** solo define
+  permisos. "Comercial" no se puede desactivar (de él salen los vendedores). Si un cargo
+  se desactiva, quien ya lo tiene lo conserva y se le puede seguir editando.
 - **Casilla Activo** (crear, editar y en la tabla). Inactivo = no entra ni aparece en
   listados, pero su historial se conserva; se puede crear inactivo para registrar a
   alguien que ya no está. Filtro Activos / Inactivos / Todos.
@@ -272,18 +274,22 @@ para que las apps de KOS se vean y administren igual.
   `vendedores.activo` como espejo. Si un vendedor migrado de SharePoint recibe un usuario
   con su mismo correo, conserva todo su historial. Un Comercial solo crea a su nombre;
   los demás eligen entre los comerciales activos. El filtro de vendedor del Seguimiento
-  sigue mostrando todos (también los históricos).
+  sigue mostrando todos (también los históricos). Si a un Comercial le corrigen el
+  correo, se actualiza su MISMO vendedor (no se parte el historial); si el correo nuevo
+  ya es de otro vendedor con historial, se rechaza.
   **Hasta que se creen los usuarios comerciales, el desplegable de vendedor está vacío.**
 
 ## Configuración (2026-10-31)
 
 - Pantalla *Configuración* (módulo de permisos `configuracion`; el Admin lo recibe
-  solo al arrancar, como cualquier módulo nuevo) con las listas **Tipo de material** y
-  **Tipo de solicitud** (`items.config_opciones`, `app/opciones.py`).
+  solo al arrancar, como cualquier módulo nuevo que ningún rol tenga aún) con las listas
+  **Tipo de material**, **Tipo de solicitud** y **Cargo** (`items.config_opciones`,
+  `app/opciones.py`; las que el código usa por nombre están en `PROTEGIDAS`).
 - Se agregan o se desactivan; no se renombran ni se borran, porque cada solicitud
   guarda el nombre y el historial no debe cambiar. Sin comas (el histórico separa varios
   tipos por coma), máx. 60 caracteres, sin duplicados (sin distinguir mayúsculas).
-  No se puede desactivar la última opción activa de una lista.
+  No se puede desactivar la última opción activa de una lista (serializado con
+  `sp_getapplock` por lista).
 - La regla Bio Natura / P1 / P2 de `creacion._revisar_material` depende de esos nombres.
 - `tipo_material` pasó de nvarchar(20) a nvarchar(60).
 
@@ -293,6 +299,17 @@ Por pedido: sin KPIs ni bloques tipo dashboard. Cada pantalla es encabezado + ba
 filtros/acciones en tarjeta + tabla. El primer bloque bajo el encabezado siempre es una
 tarjeta blanca (queda montado sobre el degradado). Los filtros que daban las tarjetas
 de Seguimiento pasaron a pastillas de estado y a un desplegable de etapa.
+
+## Base limpia: arranque desde cero (2026-10-31)
+
+Por decisión del dueño la plataforma no arrastra el histórico de SharePoint. Se
+borraron las 954 solicitudes (953 migradas + SOL-00971), su seguimiento, el cargue #6,
+los logs de creación de items y marcas y los 14 vendedores históricos, y se reiniciaron
+los contadores (la primera solicitud real es SOL-00001). Se conservaron usuarios, roles,
+permisos, configuración, etapas y los catálogos de Siesa. Respaldo JSON en
+`respaldos/2026-10-31_antes_de_limpiar/` (fuera del repositorio: tiene datos de la empresa).
+Lo creado en Siesa no se toca: el item SKU 51162 (VASO 7 OZ · K2020 BUTHER · K012) y las
+marcas K2019/K2020 siguen allá.
 
 ## Bloqueado, por que, y que se necesita
 
