@@ -1,0 +1,15 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+requests==2.32.3
+sqlalchemy==2.0.36
+apscheduler==3.10.4
+
+# Driver de SQL Server. NO usar pyodbc aqui: no tiene wheel para Python 3.14 y
+# compilarlo exige Microsoft Visual C++ Build Tools, que no estan instalados en
+# las maquinas donde corre esto. pymssql trae wheel y conecta a Azure SQL sin
+# necesidad de driver ODBC del sistema.
+pymssql==2.3.2
+
+# Subida de adjuntos (multipart/form-data) y almacenamiento en el Datalake
+python-multipart==0.0.20
+azure-storage-blob==12.24.0

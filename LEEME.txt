@@ -1,0 +1,87 @@
+CREACION DE ITEMS-EXTENSION EN SIESA (KOS Colombia)
+===================================================
+
+Un item-extension en Siesa = item base (f120_referencia) + Ext1 + Ext2:
+
+    Item base  <- columna "Titulo" (+ "Tipo de Material") del Excel   164 referencias
+    Ext 1 (MK) <- columna "Marca"                                     ~1.772 marcas
+    Ext 2 (CK) <- columna "Calibre"                                   14 calibres
+
+
+COMO SE USA
+-----------
+
+  1) python analizar.py          Solo lectura. No toca Siesa ni el Excel.
+                                 Lee las filas "Pendiente" y arma los reportes.
+
+  2) Revisar salida/plan_creacion.csv    <- es lo unico que se va a crear.
+     La columna "confianza": ALTA = calce limpio; MEDIA = revisar la columna "notas"
+     (marca duplicada en Ext1, palabras del titulo ignoradas, o desempate de referencia).
+
+  3) python crear.py --dry-run   Imprime los JSON exactos sin enviarlos.
+     python crear.py --fila 879  Crea UNA sola (hacer esto primero siempre).
+     python crear.py             Crea todo el plan.
+
+  4) Verificar en la pantalla de items de Siesa Enterprise.
+     IMPORTANTE: la consulta koscolombia_Items_odoo_crm NO muestra items recien
+     creados (parece un INNER JOIN contra costos y el item nuevo aun no tiene costo).
+     Que no aparezca ahi no significa que fallo. El registro real es
+     salida/log_creacion.csv.
+
+  5) Marcar "Creado" en la lista de SharePoint usando
+     salida/marcar_creado_en_sharepoint.csv.
+     El xlsx NO se modifica: es una tabla conectada en vivo a la lista de SharePoint
+     (INTRANETKOS), asi que cualquier cambio local se pierde al refrescar.
+
+
+ARCHIVOS
+--------
+
+  siesa_api.py   Cliente de las APIs. Su encabezado documenta el contrato exacto
+                 del conector (formatos, anchos, validaciones). Leerlo antes de tocar nada.
+  catalogo.py    Normalizacion y los tres emparejadores.
+  analizar.py    Paso 1, solo lectura -> reportes.
+  crear.py       Paso 2, el unico que escribe en Siesa.
+
+  salida/plan_creacion.csv              lo que se va a crear
+  salida/ya_existentes.csv              filas que ya estan en Siesa
+  salida/marcar_creado_en_sharepoint.csv filas que pasan de Pendiente a Creado
+  salida/marcas_faltantes.txt           marcas por dar de alta en Ext1
+  salida/items_base_faltantes.txt       titulos sin item base
+  salida/revision_manual.csv            todo lo que NO se creo, con el motivo
+  salida/log_creacion.csv               historial de POSTs (se va acumulando)
+
+
+DECISIONES DE DISENO (por que el script es "desconfiado")
+--------------------------------------------------------
+
+  * El emparejamiento de item base es ESTRUCTURAL, no por similitud de texto.
+    difflib propone "CONT KX 4 Oz" para "CONTENEDOR KX 14 OZ" con 0.96 de similitud,
+    cuando el item base correcto no existe. Si no hay calce exacto de
+    (familia, linea, modificadores, tamano), la fila va a revision: no se adivina.
+
+  * Hay dos items base que se llaman igual: KPT0009349 "VASO 7 OZ" (338 SKUs) y
+    PT0032723 "VASO 7 oz" (3 SKUs). El desempate prefiere KPT y el de mas SKUs.
+
+  * Del titulo se quitan las palabras que vienen de "Marca" y "CLIENTE", y las que
+    no existen en ningun item base (NAVIDAD, EL REGALO, ...). Quedan registradas en
+    la columna "tokens_ignorados" para poder auditarlas.
+
+  * Si "Tipo de Material" dice Bio Natura pero el item base no es LIBRE DE PLASTICO
+    (o al reves con P1/P2), la fila se bloquea. Esto atrapo la fila 892
+    ("VASO DP 9 ONZAS BIO", Bio Natura) que habria quedado con el item base normal.
+
+  * Marcas duplicadas en Ext1: se usa el f117_id con f117_ts mas reciente y queda
+    anotado en "notas". Ojo, hay varias: EMA, 20 DE JULIO, CORRAL VAINILLA.
+
+  * crear.py no reenvia una combinacion que ya figure con exito en log_creacion.csv.
+
+
+PENDIENTE / OJO
+---------------
+
+  * El .env.txt trae ConniKey y ConniToken en claro y esta en OneDrive sincronizado.
+    Conviene rotar ese token.
+
+  * El parametro paginacion=numPag=1|tamPag=100 que trae el .env.txt ROMPE las
+    consultas (HTTP 500, error de ORDER BY). Los scripts llaman sin paginacion.

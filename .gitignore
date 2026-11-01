@@ -1,0 +1,28 @@
+# --- Secretos: nunca al repositorio ---------------------------------------
+.env
+.env.txt
+*.env
+!.env.example
+
+# --- Datos de la empresa (Siesa, respaldos, salidas, hojas de calculo) -----
+cache/
+salida/
+respaldos/
+*.xlsx
+*.xls
+*.csv
+
+# --- Entornos y artefactos de compilacion ---------------------------------
+venv/
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+
+# --- Locales ---------------------------------------------------------------
+.claude/
+.vscode/
+*.log
+Thumbs.db
+desktop.ini
