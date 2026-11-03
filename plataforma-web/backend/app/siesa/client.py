@@ -25,10 +25,12 @@ NOTAS DE CAMPO:
 
   * koscolombia_Items_odoo_crm tenia un EXISTS que ocultaba items sin costo
     (incluidos los recien creados). Corregido en
-    sql/koscolombia_Items_odoo_crm_v2.sql. Aun corregida, tarda ~350s: por
-    eso esta plataforma cachea su resultado en cat_extensiones_existentes
-    en vez de llamarla en vivo por cada request de la web (ver
-    app.siesa.sync para el job que la refresca).
+    sql/koscolombia_Items_odoo_crm_v2.sql, pero con la columna de costo
+    tardaba ~10 min (564 s el 2026-10-31).
+  * Desde el 2026-11-03 va SIN costo y responde en ~1 s (9.859 filas): la
+    plataforma la consulta en vivo para detectar duplicados
+    (app.siesa.extensiones). La copia cat_extensiones_existentes queda de
+    respaldo por si Siesa no responde.
 """
 import json
 import time
@@ -38,12 +40,12 @@ import requests
 
 from app.config import settings
 
-TIMEOUT = 900  # la consulta de items es lenta: 564s el 2026-10-31 con 9.856 filas
+TIMEOUT = 900  # margen para los conectores de escritura; la consulta de items ya no lo necesita
 
 CONSULTAS = {
     "ext1": "koscolombia_ext1_odoo",
     "ext2": "koscolombia_ext2_Odoo",
-    "items": "koscolombia_Items_odoo_crm",
+    "items": settings.siesa_consulta_items,   # ~1 s desde el 2026-11-03 (antes ~10 min)
     "rutas": "koscolombia_MF_Rutas",   # ~0.5s, 64 rutas (f808_id viene con relleno a 20)
 }
 URL_CONSULTA = "https://servicios.siesacloud.com/api/connekta/v3/ejecutarconsulta"
@@ -57,14 +59,15 @@ def _headers():
     }
 
 
-def consultar(clave: str, reintentos: int = 3) -> list[dict]:
+def consultar(clave: str, reintentos: int = 3,
+              timeout: float | tuple[float, float] = TIMEOUT) -> list[dict]:
     """Ejecuta una consulta guardada de Connekta y devuelve detalle.Table."""
     descripcion = CONSULTAS.get(clave, clave)
     url = f"{URL_CONSULTA}?idCompania={settings.siesa_id_compania}&descripcion={descripcion}"
     ultimo = None
     for intento in range(1, reintentos + 1):
         try:
-            r = requests.get(url, headers=_headers(), timeout=TIMEOUT)
+            r = requests.get(url, headers=_headers(), timeout=timeout)
             if r.status_code != 200:
                 ultimo = f"HTTP {r.status_code}: {r.text[:300]}"
             else:

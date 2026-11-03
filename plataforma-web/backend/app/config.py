@@ -54,6 +54,10 @@ class Settings:
     # Parametros de planeacion (conector PARAMETROS_ITEMS_V5) y su catalogo de rutas.
     siesa_api_param_planeacion: str = _cfg("API_CREACION_PARAM_PLANEACION", "")
     siesa_api_rutas: str = _cfg("API_RUTAS", "")
+    # Consulta de items-extension que la plataforma llama EN VIVO para detectar
+    # duplicados (app.siesa.extensiones) y que usa el sync. Si se publica con
+    # otro nombre en Connekta, basta con cambiar esta variable.
+    siesa_consulta_items: str = _cfg("CONSULTA_ITEMS") or "koscolombia_Items_odoo_crm"
 
     # --- Sesion: en produccion (HTTPS) COOKIE_SECURE=1 (variable de la Web App) ---
     cookie_secure: bool = _cfg("COOKIE_SECURE", "0").lower() in ("1", "true", "si")

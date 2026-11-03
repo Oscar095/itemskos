@@ -23,7 +23,7 @@ import json
 from sqlalchemy import text
 
 from app.db.session import consultar, engine
-from app.siesa import client
+from app.siesa import client, extensiones
 
 # Traduccion de los errores del conector a algo accionable para quien lo lee.
 PISTAS = {
@@ -160,12 +160,11 @@ def revisar(s: dict) -> dict:
     if otra:
         return {"motivo": f"Ese item ya fue creado en Siesa por SOL-{otra:05d}.", "sku_existente": None}
 
-    # Ya existe? El conector responderia "exitosa" igual y seria enganoso
-    ya = consultar("""
-        SELECT sku_siesa FROM items.cat_extensiones_existentes
-         WHERE referencia = :ref AND marca_id = :marca AND calibre_id = :cal
-    """, ref=s["item_base_referencia"], marca=s["marca_id"], cal=s["calibre_id"])
-    return {"motivo": None, "sku_existente": ya[0]["sku_siesa"] if ya else None}
+    # Ya existe? El conector responderia "exitosa" igual y seria enganoso.
+    # En vivo en Siesa: la copia del sync puede ir dias atrasada.
+    ya = extensiones.sku_existente(s["item_base_referencia"], s["marca_id"], s["calibre_id"],
+                                   forzar=True)
+    return {"motivo": None, "sku_existente": ya["sku"]}
 
 
 def crear_en_siesa(solicitud_id: int, usuario: str | None = None) -> dict:

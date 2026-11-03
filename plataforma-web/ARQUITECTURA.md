@@ -221,6 +221,23 @@ marca Error solo si seguia "En cola" y el cargue igual se cierra. Una solicitud
 que ya esta "Cargada" no se reenvia. El POST de solicitudes tambien rechaza una
 combinacion que otra solicitud ya creo, aunque el catalogo aun no la tenga.
 
+## Duplicados validados en vivo contra Siesa (2026-11-03)
+
+- `koscolombia_Items_odoo_crm` se publicó **sin la columna de costo**: responde en ~1 s
+  (9.859 filas) en vez de ~10 min. Medido: 16 de 17 llamadas entre 0,9 y 1,2 s; una de 27,7 s.
+- La regla de duplicados (`routes_solicitudes.duplicado`) consulta Siesa **en vivo**
+  (`app/siesa/extensiones.py`). El aviso del formulario usa una cache en memoria de 60 s;
+  guardar, aprobar (`creacion.revisar`) y cargar vuelven a consultar. Tope de espera: 5 s
+  para conectar y 15 s para responder. Si Siesa no responde se usa la copia
+  `cat_extensiones_existentes` y el aviso lo dice; tras un fallo no se le insiste por 30 s.
+- Las solicitudes siguen en la regla: cubren lo pedido y aún no creado, que Siesa no conoce.
+  Primera prueba real: SOL-00001 y SOL-00002 (SKU 51163 y 51164) estaban en Siesa y no en la
+  copia; en vivo se detectan.
+- **Pendiente:** la versión publicada solo trae 5 columnas y el sync (`python -m app.siesa.sync`)
+  necesita además DESCRIPCION, TIPO ITEM, ITEM ID y MARCA KOS: falla con `KeyError` antes de
+  escribir nada. `sql/koscolombia_Items_odoo_crm_v3.sql` las devuelve sin el costo. Si Odoo usa
+  el costo de esta consulta, publicar la v3 con otro nombre y ponerlo en `CONSULTA_ITEMS`.
+
 ## Usuarios, roles y login (2026-10-31)
 
 Mismo modelo y mismo diseño que la app **produccionweb** (repo `Oscar095/produccionweb`),

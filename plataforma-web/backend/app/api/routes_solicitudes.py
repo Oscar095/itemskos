@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app import opciones as listas
 from app.auth.seguridad import exigir, requiere, tiene
 from app.db.session import consultar, engine
-from app.siesa import creacion
+from app.siesa import creacion, extensiones
 from app.storage import datalake
 
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
@@ -45,27 +45,28 @@ def opciones():
     return {"materiales": listas.activas("materiales"), "tipos_solicitud": listas.activas("tipos_solicitud")}
 
 
-def duplicado(ref: str, marca: str, cal: str) -> dict | None:
+def duplicado(ref: str, marca: str, cal: str, forzar: bool = False) -> dict:
     """
-    Por que no se puede pedir esa combinacion item base + marca + calibre, o
-    None si es nueva. Es la UNICA regla de duplicados: la usan el aviso del
-    formulario (GET /verificar) y el POST. Antes el aviso solo miraba Siesa y
+    Si esa combinacion item base + marca + calibre ya esta creada o pedida:
+    {"existe": bool, "mensaje": str, "fuente": "siesa"|"copia", ...}.
+
+    Es la UNICA regla de duplicados: la usan el aviso del formulario
+    (GET /verificar) y el POST. Antes el aviso miraba solo la copia de Siesa y
     decia "se puede crear" a algo que el POST despues rechazaba con 409.
 
     Dos fuentes, porque ninguna alcanza sola:
-      * cat_extensiones_existentes: lo que hay en Siesa, pero solo hasta el
-        ultimo sync (manual, ~10 min).
-      * items.solicitudes: lo ya pedido o creado desde la plataforma, que el
-        catalogo no ve hasta el proximo sync.
+      * Siesa EN VIVO (app.siesa.extensiones): lo que ya esta creado, sea por
+        la plataforma o a mano. Si Siesa no responde, la copia del sync.
+      * items.solicitudes: lo ya pedido y aun no creado (en diseno, esperando
+        el cargue...), que Siesa todavia no conoce.
     """
-    sku = consultar("""
-        SELECT TOP 1 sku_siesa FROM items.cat_extensiones_existentes
-         WHERE referencia = :ref AND marca_id = :marca AND calibre_id = :cal
-    """, ref=ref, marca=marca, cal=cal)
-    if sku:
-        n = sku[0]["sku_siesa"]
-        return {"sku_siesa": n,
-                "mensaje": f"Ese item ya existe en Siesa con SKU {n}. No hace falta solicitarlo."}
+    siesa = extensiones.sku_existente(ref, marca, cal, forzar=forzar)
+    fuente = siesa["fuente"]
+    if siesa["sku"]:
+        estado = ", pero está inactivo. No se puede volver a crear" if siesa["activo"] is False else ""
+        return {"existe": True, "sku_siesa": siesa["sku"], "fuente": fuente,
+                "mensaje": f"Ese item ya existe en Siesa con SKU {siesa['sku']}{estado}. "
+                           "No hace falta solicitarlo."}
 
     # Una creada gana sobre una abierta (mismo orden que creacion.otra_creada).
     otra = consultar("""
@@ -79,17 +80,20 @@ def duplicado(ref: str, marca: str, cal: str) -> dict | None:
             msg = f"Ese item ya fue creado en Siesa por {sol}. No hace falta solicitarlo."
         else:
             msg = f"Ya hay una solicitud abierta para ese item: {sol} ({otra[0]['estado']})."
-        return {"solicitud_id": otra[0]["id"], "mensaje": msg}
-    return None
+        return {"existe": True, "solicitud_id": otra[0]["id"], "fuente": fuente, "mensaje": msg}
+
+    if fuente == "siesa":
+        msg = "Combinación nueva: no está en Siesa ni en otra solicitud."
+    else:
+        msg = ("Combinación nueva según la última copia del catálogo: Siesa no respondió y no "
+               "se pudo confirmar en vivo.")
+    return {"existe": False, "fuente": fuente, "mensaje": msg}
 
 
 @router.get("/verificar")
 def verificar(item_base_referencia: str, marca_id: str, calibre_id: str):
     """Aviso del formulario, antes de guardar: la misma regla que aplica el POST."""
-    dup = duplicado(item_base_referencia, marca_id, calibre_id)
-    if dup:
-        return {"existe": True, **dup}
-    return {"existe": False, "mensaje": "Combinación nueva: no está en Siesa ni en otra solicitud."}
+    return duplicado(item_base_referencia, marca_id, calibre_id)
 
 
 @router.post("")
@@ -110,10 +114,11 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
         raise HTTPException(400, "Indica el calibre: sin él no se puede crear el item en Siesa.")
 
     # No se piden items que ya existen: ni en Siesa ni en otra solicitud
-    # (la misma regla que el aviso del formulario, ver duplicado()).
+    # (la misma regla que el aviso del formulario, ver duplicado()). Al guardar
+    # se pregunta a Siesa de nuevo: el aviso pudo usar un dato de hace un minuto.
     if s.marca_id:
-        dup = duplicado(s.item_base_referencia, s.marca_id, s.calibre_id)
-        if dup:
+        dup = duplicado(s.item_base_referencia, s.marca_id, s.calibre_id, forzar=True)
+        if dup["existe"]:
             raise HTTPException(409, dup["mensaje"])
 
     # Un Comercial solo crea a su nombre; los demas eligen entre los comerciales activos.
