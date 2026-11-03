@@ -167,7 +167,10 @@ Reemplaza la creacion automatica al aprobar (que se uso solo unas horas).
 
 1. **Vendedor** crea la solicitud. La marca inexistente se crea en Ext1 desde el
    selector. El backend rechaza (409) un item que ya existe en Siesa o que ya
-   tiene otra solicitud abierta, y exige calibre.
+   tiene otra solicitud abierta, y exige calibre. El aviso del formulario
+   (`GET /solicitudes/verificar`) usa esa misma regla (`routes_solicitudes.duplicado`):
+   hasta el 2026-11-03 solo miraba el catalogo de Siesa y decia "se puede crear"
+   a combinaciones ya pedidas o creadas desde la plataforma.
 2. **Diseño** registra "Aprobación de Diseño": se corren las validaciones que no
    necesitan Siesa (`creacion.revisar`) y la solicitud queda **autorizada**
    (`fecha_autorizacion`). No se crea nada. Si falla una validacion queda

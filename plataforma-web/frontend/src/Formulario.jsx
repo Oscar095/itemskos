@@ -68,13 +68,25 @@ export default function Formulario({ alCrear }) {
     useAuthStore.getState().cargar();
   }, []);
 
-  // Aviso de duplicado apenas estan las 3 claves: es la validacion que hoy no
-  // existe y por la que se solicitaron items que ya estaban creados en Siesa.
+  // Aviso de duplicado apenas estan las 3 claves. El backend revisa Siesa y las
+  // demas solicitudes: la misma regla que aplica al guardar.
   useEffect(() => {
     const { item_base_referencia, marca_id, calibre_id } = form;
-    if (!item_base_referencia || !marca_id || !calibre_id) return setDuplicado(null);
+    if (!item_base_referencia || !marca_id || !calibre_id) {
+      setDuplicado(null);
+      return undefined;
+    }
+    // Una respuesta lenta de la combinacion anterior no debe pisar la actual.
+    let vigente = true;
+    setDuplicado({ verificando: true });
     const p = new URLSearchParams({ item_base_referencia, marca_id, calibre_id });
-    pedir(`/api/solicitudes/verificar?${p}`).then(setDuplicado).catch(() => setDuplicado(null));
+    pedir(`/api/solicitudes/verificar?${p}`)
+      .then((r) => { if (vigente) setDuplicado(r); })
+      .catch(() => {
+        if (vigente) setDuplicado({ existe: false, error: true,
+          mensaje: "No se pudo verificar si ese item ya existe; se revisará al guardar." });
+      });
+    return () => { vigente = false; };
   }, [form.item_base_referencia, form.marca_id, form.calibre_id]);
 
   const enviar = async (e) => {
@@ -115,6 +127,8 @@ export default function Formulario({ alCrear }) {
       alCrear?.(limpio);
     } catch (err) {
       setResultado({ ok: false, mensaje: err.message });
+      // 409 = duplicado (alguien la pidio entre el aviso y el guardado): el aviso se pone al dia.
+      if (err.status === 409) setDuplicado({ existe: true, mensaje: err.message });
     } finally {
       setEnviando(false);
     }
@@ -124,7 +138,7 @@ export default function Formulario({ alCrear }) {
     form.item_base_referencia &&
     form.marca_id &&
     form.calibre_id &&
-    !duplicado?.existe &&
+    !duplicado?.existe && !duplicado?.verificando &&
     (form.cliente_id || form.cliente_texto) &&
     form.tipo_material && form.cantidad && form.vendedor_id;
 
@@ -217,6 +231,16 @@ export default function Formulario({ alCrear }) {
                 )}
               </Field>
 
+              {/* Justo debajo de item base, marca y calibre: al fondo del formulario no se veia. */}
+              {duplicado && !duplicado.verificando && (
+                <div className="col-span-full">
+                  <Aviso tono={duplicado.existe ? "alerta" : duplicado.error ? "info" : "ok"}
+                         icon={duplicado.existe ? AlertTriangle : duplicado.error ? AlertCircle : CheckCircle2}>
+                    {duplicado.mensaje}
+                  </Aviso>
+                </div>
+              )}
+
               <div className="col-span-full">
                 <Field label="Tipo de solicitud">
                   <select className={SELECT} value={form.tipo_solicitud}
@@ -265,12 +289,6 @@ export default function Formulario({ alCrear }) {
               </div>
             </div>
 
-            {duplicado && (
-              <Aviso tono={duplicado.existe ? "alerta" : "ok"} icon={duplicado.existe ? AlertTriangle : CheckCircle2}>
-                {duplicado.mensaje}
-              </Aviso>
-            )}
-
             {resultado && (
               <Aviso
                 tono={!resultado.ok ? "error" : conPendientes ? "alerta" : "ok"}
@@ -296,8 +314,10 @@ export default function Formulario({ alCrear }) {
             {!listo && (
               <span className="text-xs text-slate-400">
                 {duplicado?.existe
-                  ? "Ese item ya existe en Siesa: no se puede solicitar de nuevo."
-                  : "Faltan campos: item base, marca, calibre, cliente, material, cantidad y vendedor."}
+                  ? "Ese item ya está creado o solicitado: no se puede pedir de nuevo."
+                  : duplicado?.verificando
+                    ? "Verificando si el item ya existe…"
+                    : "Faltan campos: item base, marca, calibre, cliente, material, cantidad y vendedor."}
               </span>
             )}
           </div>

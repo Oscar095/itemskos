@@ -45,20 +45,51 @@ def opciones():
     return {"materiales": listas.activas("materiales"), "tipos_solicitud": listas.activas("tipos_solicitud")}
 
 
+def duplicado(ref: str, marca: str, cal: str) -> dict | None:
+    """
+    Por que no se puede pedir esa combinacion item base + marca + calibre, o
+    None si es nueva. Es la UNICA regla de duplicados: la usan el aviso del
+    formulario (GET /verificar) y el POST. Antes el aviso solo miraba Siesa y
+    decia "se puede crear" a algo que el POST despues rechazaba con 409.
+
+    Dos fuentes, porque ninguna alcanza sola:
+      * cat_extensiones_existentes: lo que hay en Siesa, pero solo hasta el
+        ultimo sync (manual, ~10 min).
+      * items.solicitudes: lo ya pedido o creado desde la plataforma, que el
+        catalogo no ve hasta el proximo sync.
+    """
+    sku = consultar("""
+        SELECT TOP 1 sku_siesa FROM items.cat_extensiones_existentes
+         WHERE referencia = :ref AND marca_id = :marca AND calibre_id = :cal
+    """, ref=ref, marca=marca, cal=cal)
+    if sku:
+        n = sku[0]["sku_siesa"]
+        return {"sku_siesa": n,
+                "mensaje": f"Ese item ya existe en Siesa con SKU {n}. No hace falta solicitarlo."}
+
+    # Una creada gana sobre una abierta (mismo orden que creacion.otra_creada).
+    otra = consultar("""
+        SELECT TOP 1 id, estado FROM items.solicitudes
+         WHERE item_base_referencia = :ref AND marca_id = :marca AND calibre_id = :cal
+         ORDER BY CASE WHEN estado = 'Creado' THEN 0 ELSE 1 END, id DESC
+    """, ref=ref, marca=marca, cal=cal)
+    if otra:
+        sol = f"SOL-{otra[0]['id']:05d}"
+        if otra[0]["estado"] == "Creado":
+            msg = f"Ese item ya fue creado en Siesa por {sol}. No hace falta solicitarlo."
+        else:
+            msg = f"Ya hay una solicitud abierta para ese item: {sol} ({otra[0]['estado']})."
+        return {"solicitud_id": otra[0]["id"], "mensaje": msg}
+    return None
+
+
 @router.get("/verificar")
 def verificar(item_base_referencia: str, marca_id: str, calibre_id: str):
-    """Avisa si esa combinacion ya existe como SKU en Siesa, antes de guardar."""
-    filas = consultar(
-        """
-        SELECT sku_siesa FROM items.cat_extensiones_existentes
-         WHERE referencia = :ref AND marca_id = :marca AND calibre_id = :cal
-        """,
-        ref=item_base_referencia, marca=marca_id, cal=calibre_id,
-    )
-    if filas:
-        return {"existe": True, "sku_siesa": filas[0]["sku_siesa"],
-                "mensaje": f"Ya existe en Siesa con SKU {filas[0]['sku_siesa']}."}
-    return {"existe": False, "mensaje": "Combinación nueva, se puede crear."}
+    """Aviso del formulario, antes de guardar: la misma regla que aplica el POST."""
+    dup = duplicado(item_base_referencia, marca_id, calibre_id)
+    if dup:
+        return {"existe": True, **dup}
+    return {"existe": False, "mensaje": "Combinación nueva: no está en Siesa ni en otra solicitud."}
 
 
 @router.post("")
@@ -78,26 +109,12 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
     if not s.calibre_id:
         raise HTTPException(400, "Indica el calibre: sin él no se puede crear el item en Siesa.")
 
-    # No se piden items que ya existen: ni en Siesa ni en otra solicitud abierta.
+    # No se piden items que ya existen: ni en Siesa ni en otra solicitud
+    # (la misma regla que el aviso del formulario, ver duplicado()).
     if s.marca_id:
-        ya = verificar(s.item_base_referencia, s.marca_id, s.calibre_id)
-        if ya["existe"]:
-            raise HTTPException(409, f"Ese item ya existe en Siesa con SKU {ya['sku_siesa']}. "
-                                     "No hace falta solicitarlo.")
-        # El catalogo de extensiones va atrasado hasta el proximo sync: un item
-        # que creo un cargue hace minutos solo se ve en las solicitudes.
-        creada = creacion.otra_creada(None, s.item_base_referencia, s.marca_id, s.calibre_id)
-        if creada:
-            raise HTTPException(409, f"Ese item ya fue creado en Siesa por SOL-{creada:05d}. "
-                                     "No hace falta solicitarlo.")
-        abierta = consultar("""
-            SELECT TOP 1 id FROM items.solicitudes
-             WHERE item_base_referencia = :ref AND marca_id = :marca AND calibre_id = :cal
-               AND estado <> 'Creado'
-        """, ref=s.item_base_referencia, marca=s.marca_id, cal=s.calibre_id)
-        if abierta:
-            raise HTTPException(409, f"Ya hay una solicitud abierta para ese item: "
-                                     f"SOL-{abierta[0]['id']:05d}.")
+        dup = duplicado(s.item_base_referencia, s.marca_id, s.calibre_id)
+        if dup:
+            raise HTTPException(409, dup["mensaje"])
 
     # Un Comercial solo crea a su nombre; los demas eligen entre los comerciales activos.
     if usuario.get("cargo") == "Comercial" and usuario["vendedor_id"]:
