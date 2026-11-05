@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Paperclip, Route, Send, Upload, X, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Mail, Paperclip, Route, Send, Upload, X, XCircle,
 } from "lucide-react";
 import { pedir } from "./api";
 import { useAuthStore } from "./store/auth";
@@ -18,6 +18,13 @@ function tamano(bytes) {
 const MODULO_ETAPA = { 1: "diseno", 2: "diseno", 3: "planeacion", 4: "pedidos", 5: "diseno", 6: "planeacion" };
 
 const SIN_PERMISOS = {};
+
+// Correos de avance (items.notificaciones): a quien iba y en que quedo.
+const DESTINO_CORREO = { vendedor: "Vendedor", diseno: "Diseño", planeacion: "Planeación" };
+const COLOR_CORREO = {
+  Enviado: "text-emerald-600", Pendiente: "text-amber-600", Enviando: "text-amber-600",
+  Error: "text-rose-600", Vencido: "text-rose-600", Omitido: "text-slate-400",
+};
 
 /** Dato de la ficha, sin caja: etiqueta arriba, valor debajo y una linea fina que lo separa del siguiente. */
 function Dato({ label, children, mono, ancho }) {
@@ -314,6 +321,30 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
                 </label>
               )}
             </section>
+
+            {datos.notificaciones?.length > 0 && (
+              <section className="space-y-3">
+                <Seccion icon={Mail}>Correos</Seccion>
+                <ul className="divide-y divide-slate-100">
+                  {datos.notificaciones.map((n) => (
+                    <li key={n.id} className="py-2.5 min-w-0">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="text-sm text-slate-800 truncate" title={n.asunto}>{n.asunto}</p>
+                        <span className={`text-xs font-semibold shrink-0 ${COLOR_CORREO[n.estado] || "text-slate-500"}`}>
+                          {n.estado}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 truncate" title={n.para || undefined}>
+                        {DESTINO_CORREO[n.destino] || n.destino} · {n.para || "sin destinatario"} · {fechaHora(n.enviado || n.creado)}
+                      </p>
+                      {n.detalle && n.estado !== "Enviado" && (
+                        <p className="text-xs text-slate-500 mt-0.5">{n.detalle}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         )}
       </aside>

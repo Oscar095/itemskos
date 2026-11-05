@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ClipboardList, Search, X, ChevronLeft, ChevronRight, Paperclip, FileSearch,
 } from "lucide-react";
@@ -23,8 +24,19 @@ export default function Panel({ recargar }) {
   const [pagina, setPagina] = useState(1);
   const [vendedores, setVendedores] = useState([]);
   const [etapas, setEtapas] = useState([]);
-  const [abierta, setAbierta] = useState(null);
+  // /seguimiento?sol=12 abre esa ficha: es el enlace de los correos de avance.
+  const [params, setParams] = useSearchParams();
+  const [abierta, setAbierta] = useState(() => Number(params.get("sol")) || null);
   const [cargando, setCargando] = useState(false);
+
+  const cerrarFicha = () => {
+    setAbierta(null);
+    if (params.has("sol")) {
+      const p = new URLSearchParams(params);
+      p.delete("sol");
+      setParams(p, { replace: true });
+    }
+  };
 
   useEffect(() => {
     // Todos, tambien los inactivos: este filtro es para consultar el historial.
@@ -220,7 +232,7 @@ export default function Panel({ recargar }) {
         )}
       </PageBody>
 
-      {abierta && <Detalle id={abierta} alCerrar={() => setAbierta(null)} alCambiar={cargar} />}
+      {abierta && <Detalle id={abierta} alCerrar={cerrarFicha} alCambiar={cargar} />}
     </div>
   );
 }

@@ -24,6 +24,7 @@ import time
 
 from sqlalchemy import text
 
+from app import notificaciones
 from app.db.session import consultar, engine
 from app.siesa import client, creacion
 
@@ -258,14 +259,19 @@ def _procesar_fila(cargue_id: int, d: dict, usuario: str | None) -> None:
 
     # Paso 1: el item. Si un cargue anterior ya lo creo y fallaron solo los
     # parametros, no se vuelve a mandar (el conector diria "exitosa" igual).
-    if s["estado"] == "Creado":
+    nuevo = s["estado"] != "Creado"   # el item sale de ESTE cargue, no es un reintento de parametros
+    ya_existia = False
+    if not nuevo:
         item_ok, item_msg = True, "El item ya estaba creado; solo se cargan los parámetros."
     else:
         r = creacion.crear_en_siesa(d["solicitud_id"], usuario)
         item_ok, item_msg = r["ok"], r["mensaje"]
+        ya_existia = bool(r.get("ya_existia"))
     if not item_ok:
         _cerrar_fila(d, "Error", item_ok, item_msg, None, None)
         _evento(d["solicitud_id"], ETAPA_APROBACION, f"Cargue #{cargue_id}: {item_msg}", quien)
+        notificaciones.registrar("creacion_fallida", d["solicitud_id"], cargue_id=cargue_id,
+                                 actor=usuario, mensaje=item_msg)
         return
 
     # Paso 2: parametros de planeacion, que necesitan el item ya creado.
@@ -293,6 +299,12 @@ def _procesar_fila(cargue_id: int, d: dict, usuario: str | None) -> None:
         """), {"etapa": ETAPA_CREACION, "pe": "Cargada" if param_ok else "Error",
                "pm": param_msg[:600], "id": d["solicitud_id"]})
     _evento(d["solicitud_id"], ETAPA_CREACION, f"Cargue #{cargue_id}: {item_msg} {param_msg}", quien)
+    if nuevo:
+        # Vendedor y Planeación. Un reintento de solo parámetros no avisa: el
+        # item ya se avisó cuando se creó, y el planeador ve el resultado en el cargue.
+        notificaciones.registrar("item_creado", d["solicitud_id"], cargue_id=cargue_id, actor=usuario,
+                                 mensaje=item_msg, ya_existia=ya_existia,
+                                 param_ok=param_ok, param_msg=param_msg)
 
 
 def _cerrar_fila(d, estado, item_ok, item_msg, param_ok, param_msg,

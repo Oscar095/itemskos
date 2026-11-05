@@ -1,0 +1,117 @@
+{
+  "name": "KOS Items - Notificaciones",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Correos de la Plataforma de Items\nLa plataforma manda cada correo ya armado (`para`, `asunto`, `html`, `texto`) a este Webhook; el flujo lo envía con la credencial **Formularios** y responde `{ok: true}`.\n\nSi el envío falla responde **502** y la plataforma reintenta a los 1, 5, 15 y 60 min.\n\nRegistro de cada correo: tabla `items.notificaciones` (sección *Correos* de la ficha) y las ejecuciones de este flujo.\n\nEl Webhook exige el encabezado `X-KOS-Token` (credencial Header Auth), con el mismo valor que `N8N_WEBHOOK_TOKEN` en la Web App.",
+        "height": 300,
+        "width": 420
+      },
+      "id": "5f0c1a52-4a5e-4a3e-9d0a-1e7d2b8c6a01",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-120, -380]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kos-items-notificaciones",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "7d3e9b14-2f61-4c55-8a7e-5b2f0e9c1d02",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "3bc17a0a-1c64-4fdd-aead-6bdd8e0de7a8",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "KOS Items - token webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "formularios@koscolombia.com",
+        "toEmail": "={{ $json.body.para }}",
+        "subject": "={{ $json.body.asunto }}",
+        "emailFormat": "both",
+        "text": "={{ $json.body.texto }}",
+        "html": "={{ $json.body.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a1b2c3d4-0e5f-4a6b-8c7d-9e0f1a2b3c03",
+      "name": "Enviar correo",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [260, 0],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "smtp": {
+          "id": "",
+          "name": "Formularios"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"id\": $('Webhook').item.json.body.id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b2c3d4e5-1f60-4b7c-9d8e-0f1a2b3c4d04",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [540, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": false, \"id\": $('Webhook').item.json.body.id, \"error\": String($json.error?.message ?? $json.error ?? 'No se pudo enviar el correo') } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "c3d4e5f6-2a71-4c8d-8e9f-1a2b3c4d5e05",
+      "name": "Responder error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [540, 100]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          { "node": "Enviar correo", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Enviar correo": {
+      "main": [
+        [
+          { "node": "Responder OK", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Responder error", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "timezone": "America/Bogota"
+  }
+}

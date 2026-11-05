@@ -347,6 +347,41 @@ solo lleva `app/`, `requirements.txt` y `static/`; Oryx hace el `pip install` en
 - La sincronización del catálogo (`python -m app.siesa.sync`, ~10 min) sigue siendo manual:
   se puede correr desde un PC con el `.env`, escribe en la misma base.
 
+## Correos de avance por n8n (2026-11-05)
+
+| Evento | Vendedor | Diseño | Planeación |
+|---|---|---|---|
+| Solicitud registrada (también si nace bloqueada) | ✓ | ✓ | |
+| Etapa registrada (Solicitud de Diseño, Digitación de Pedido, Llegada de Planchas, En producción...) | ✓ | | |
+| Aprobación de Diseño → autorizada | ✓ | | ✓ |
+| Aprobación de Diseño → bloqueada, o el item ya existía en Siesa | ✓ | | |
+| Cargue: item creado (o ya existía) | ✓ | | ✓ |
+| Cargue: Siesa rechazó la creación | ✓ | | |
+
+- **Destinatarios** (`app/notificaciones.py`, `DESTINOS`): el vendedor es el usuario Comercial
+  ligado a la solicitud (su correo vigente). Diseño = usuarios activos con cargo *Diseño*,
+  correo y permiso `diseno/editar`; Planeación = cargo *Producción* con `planeacion/crear`
+  (quien lanza cargues). Por rol no se podía: quien diseña y quien planea son Admin. Un
+  reintento de solo parámetros y una aprobación repetida no mandan correo.
+- **Outbox**: la plataforma arma el correo completo (asunto, HTML escapado y texto) y lo deja
+  en `items.notificaciones`; ese es el registro de cada actividad y queda aunque n8n falle.
+  Un hilo lo manda al Webhook del flujo, que envía con la credencial **Formularios**.
+  Reintentos a los 1, 5, 15 y 60 min (después `Error`); a las 24 h sin salir, `Vencido`; sin
+  nadie a quien enviar, `Omitido` con el motivo. Las filas se toman con `UPDLOCK, READPAST`.
+  `registrar()` nunca lanza: un correo no tumba una aprobación ni un cargue.
+- **Solo envía el servidor con `N8N_WEBHOOK_URL`** (Azure). Un PC sin esa variable registra los
+  correos y los manda Azure, porque comparten la base. Variables: `N8N_WEBHOOK_URL`,
+  `N8N_WEBHOOK_TOKEN` (encabezado `X-KOS-Token`, validado por la credencial Header Auth del
+  Webhook) y `APP_URL` (botón *Ver en la plataforma*).
+- **Flujo**: `plataforma-web/n8n/notificaciones-items.json`, Webhook (POST
+  `/webhook/kos-items-notificaciones`, Header Auth) → *Enviar correo* → *Responder OK*
+  (`{ok: true}`) o *Responder error* (502, la plataforma reintenta). Solo cuenta como enviado
+  un 200 con `{ok: true}`. El nodo de envío de la plantilla es SMTP; si *Formularios* es de
+  Outlook o Gmail se cambia ese nodo.
+- **En la plataforma**: la ficha muestra la sección *Correos* (a quién, estado y motivo). El
+  enlace del correo es `/seguimiento?sol=N`, que abre la ficha; si no hay sesión, el login
+  vuelve a esa página.
+
 ## Bloqueado, por que, y que se necesita
 
 | Bloqueo | Bloquea | Que hace falta |

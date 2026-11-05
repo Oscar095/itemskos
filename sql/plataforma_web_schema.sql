@@ -391,3 +391,40 @@ IF NOT EXISTS (SELECT 1 FROM items.config_opciones WHERE lista = 'cargos')
         ('cargos', 'Comercial', 1, 'sistema'), ('cargos', N'Diseño', 2, 'sistema'),
         ('cargos', N'Producción', 3, 'sistema');
 GO
+
+/* ============================================================================
+   Notificaciones por correo (2026-11-05)
+   ----------------------------------------------------------------------------
+   Registro de cada correo de avance y cola de envio (outbox). La plataforma
+   arma el correo completo y lo deja aqui; un hilo del backend lo manda al
+   Webhook del flujo de n8n, que envia con la credencial "Formularios". Ver
+   plataforma-web/backend/app/notificaciones.py.
+   estado: Pendiente (en cola, tambien entre reintentos) | Enviando | Enviado |
+           Error (fallo los 5 intentos) | Omitido (nadie a quien enviar) |
+           Vencido (24 h sin salir)
+   destino: vendedor | diseno | planeacion. para: correos separados por coma.
+   ============================================================================ */
+IF OBJECT_ID('items.notificaciones') IS NULL
+CREATE TABLE items.notificaciones (
+    id               int IDENTITY PRIMARY KEY,
+    solicitud_id     int            NULL REFERENCES items.solicitudes(id),
+    evento           nvarchar(40)   NOT NULL,
+    destino          nvarchar(20)   NOT NULL,
+    para             nvarchar(1000) NULL,
+    asunto           nvarchar(300)  NOT NULL,
+    cuerpo_html      nvarchar(max)  NOT NULL,
+    cuerpo_texto     nvarchar(max)  NULL,
+    estado           nvarchar(20)   NOT NULL DEFAULT 'Pendiente',
+    intentos         int            NOT NULL DEFAULT 0,
+    detalle          nvarchar(1000) NULL,
+    creado           datetime2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    actualizado      datetime2      NULL,
+    proximo_intento  datetime2      NULL,
+    enviado          datetime2      NULL
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_notificaciones_cola')
+    CREATE INDEX IX_notificaciones_cola ON items.notificaciones(estado, proximo_intento);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_notificaciones_solicitud')
+    CREATE INDEX IX_notificaciones_solicitud ON items.notificaciones(solicitud_id, id);
+GO

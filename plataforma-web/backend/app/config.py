@@ -59,6 +59,16 @@ class Settings:
     # otro nombre en Connekta, basta con cambiar esta variable.
     siesa_consulta_items: str = _cfg("CONSULTA_ITEMS") or "koscolombia_Items_odoo_crm"
 
+    # --- Correos de avance (flujo de n8n, ver app/notificaciones.py) ---
+    # URL de produccion del Webhook del flujo. Sin ella este servidor no envia: los
+    # correos quedan en cola en items.notificaciones y los manda el que si la tenga.
+    n8n_webhook_url: str = _cfg("N8N_WEBHOOK_URL")
+    # Secreto compartido: viaja en el encabezado X-KOS-Token y lo valida la
+    # credencial Header Auth del Webhook en n8n.
+    n8n_webhook_token: str = _cfg("N8N_WEBHOOK_TOKEN")
+    # Direccion publica de la plataforma, para el boton "Ver en la plataforma".
+    app_url: str = _cfg("APP_URL").rstrip("/")
+
     # --- Sesion: en produccion (HTTPS) COOKIE_SECURE=1 (variable de la Web App) ---
     cookie_secure: bool = _cfg("COOKIE_SECURE", "0").lower() in ("1", "true", "si")
 

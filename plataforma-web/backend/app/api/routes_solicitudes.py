@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from app import opciones as listas
+from app import notificaciones, opciones as listas
 from app.auth.seguridad import exigir, requiere, tiene
 from app.db.session import consultar, engine
 from app.siesa import creacion, extensiones
@@ -171,6 +171,9 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
                "obs": s.observaciones or "Solicitud creada.",
                "email": None, "nombre": usuario["nombre"]})
 
+    # Al vendedor (su constancia) y a Diseño, que es quien la toma.
+    notificaciones.registrar("solicitud_creada", nuevo_id, actor=usuario["nombre"],
+                             observacion=s.observaciones)
     return {"id": nuevo_id, "estado": estado, "motivo_bloqueo": motivo}
 
 
@@ -281,7 +284,8 @@ def detalle(solicitud_id: int, _=Depends(requiere("seguimiento", "ver"))):
         SELECT id, nombre_archivo, tipo_contenido, tamano_bytes, subido_por, fecha
           FROM items.adjuntos WHERE solicitud_id = :id ORDER BY fecha
     """, id=solicitud_id)
-    return {"solicitud": filas[0], "seguimiento": seguimiento, "adjuntos": adjuntos}
+    return {"solicitud": filas[0], "seguimiento": seguimiento, "adjuntos": adjuntos,
+            "notificaciones": notificaciones.de_solicitud(solicitud_id)}
 
 
 def listar_una(solicitud_id: int):
@@ -334,11 +338,15 @@ def agregar_evento(solicitud_id: int, ev: EventoNuevo, usuario: dict = Depends(r
         ), {"etapa": ev.etapa_id, "id": solicitud_id})
 
     if ev.etapa_id == ETAPA_APROBACION:
-        return _autorizar_al_aprobar(solicitud_id, previa[0])
+        # Su correo depende de lo que resulte de autorizar: lo arma esa funcion.
+        return _autorizar_al_aprobar(solicitud_id, previa[0], usuario["nombre"], ev.observacion)
+    notificaciones.registrar("etapa", solicitud_id, etapa_id=ev.etapa_id, actor=usuario["nombre"],
+                             observacion=ev.observacion)
     return {"ok": True}
 
 
-def _autorizar_al_aprobar(solicitud_id: int, previa: dict) -> dict:
+def _autorizar_al_aprobar(solicitud_id: int, previa: dict, actor: str | None = None,
+                          observacion: str | None = None) -> dict:
     """
     Aprobar el diseno AUTORIZA la creacion, no la hace: el item necesita sus
     parametros de planeacion (ruta y bodega) y esos los confirma el planeador
@@ -378,6 +386,14 @@ def _autorizar_al_aprobar(solicitud_id: int, previa: dict) -> dict:
             INSERT INTO items.seguimiento (solicitud_id, etapa_id, observacion, usuario_nombre)
             VALUES (:id, :etapa, :obs, 'Plataforma')
         """), {"id": solicitud_id, "etapa": ETAPA_APROBACION, "obs": msg})
+
+    # Vendedor siempre; Planeación solo si quedó autorizada (le llega a "Items listos a crear").
+    if r["motivo"]:
+        notificaciones.registrar("diseno_bloqueado", solicitud_id, actor=actor, mensaje=r["motivo"])
+    elif r["sku_existente"]:
+        notificaciones.registrar("item_existente", solicitud_id, actor=actor, sku=r["sku_existente"])
+    else:
+        notificaciones.registrar("diseno_aprobado", solicitud_id, actor=actor, observacion=observacion)
     return {"ok": ok, "autorizacion": {"ok": ok, "mensaje": msg,
                                        "ya_existia": bool(r["sku_existente"])}}
 

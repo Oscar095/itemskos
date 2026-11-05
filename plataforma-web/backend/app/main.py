@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import notificaciones
 from app.api import (routes_auth, routes_catalogo, routes_config, routes_migracion, routes_planeacion,
                      routes_roles, routes_solicitudes)
 from app.auth import seguridad
@@ -51,6 +52,7 @@ app.include_router(routes_migracion.router, dependencies=[Depends(seguridad.requ
 def _al_arrancar():
     seguridad.sembrar_roles()
     planeacion.recuperar_interrumpidos()
+    notificaciones.iniciar()   # hilo que manda la cola de correos a n8n (solo con N8N_WEBHOOK_URL)
 
 
 @app.get("/health")

@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "./store/auth";
 import Layout, { NAV, puedeVer } from "./components/Layout";
 import { Loading } from "./components/ui";
-import Login from "./pages/Login";
+import Login, { destino } from "./pages/Login";
 import Usuarios from "./pages/Usuarios";
 import Configuracion from "./pages/Configuracion";
 import Panel from "./Panel.jsx";
@@ -13,8 +13,10 @@ import Planeacion from "./Planeacion.jsx";
 /** Exige sesion y, si se indica, un permiso (como ProtectedRoute en produccionweb). */
 function Protegida({ modulo, accion = "ver", children }) {
   const { user, cargando } = useAuthStore();
+  const location = useLocation();
   if (cargando) return <div className="p-10"><Loading label="Verificando sesión..." /></div>;
-  if (!user) return <Navigate to="/login" replace />;
+  // Recuerda a donde iba: el enlace de un correo abre la ficha despues del login.
+  if (!user) return <Navigate to="/login" replace state={{ desde: location.pathname + location.search }} />;
   if (modulo && !user.permisos?.[modulo]?.[accion]) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 }
@@ -42,7 +44,8 @@ function NuevaSolicitud() {
 
 function LoginRuta() {
   const { user, cargando } = useAuthStore();
-  if (!cargando && user) return <Navigate to="/" replace />;
+  const location = useLocation();
+  if (!cargando && user) return <Navigate to={destino(location)} replace />;
   return <Login />;
 }
 

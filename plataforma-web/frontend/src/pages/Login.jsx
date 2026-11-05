@@ -1,13 +1,23 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { User, Lock, LogIn, AlertCircle, ClipboardList, Palette, PackageCheck } from "lucide-react";
 import { useAuthStore } from "../store/auth";
+
+/**
+ * A donde volver despues del login: la pagina que lo pidio (p. ej. el enlace
+ * "Ver en la plataforma" de un correo). Solo rutas de esta app.
+ */
+export function destino(location) {
+  const d = location.state?.desde;
+  return typeof d === "string" && d.startsWith("/") && !d.startsWith("//") ? d : "/";
+}
 
 // Misma pantalla que produccionweb/pages/Login.tsx, con los textos de esta app
 // y sin las tarjetas de vidrio del panel de marca.
 export default function Login() {
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
+  const location = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,7 +29,7 @@ export default function Login() {
     setLoading(true);
     try {
       await login(username, password);
-      navigate("/");
+      navigate(destino(location), { replace: true });
     } catch (err) {
       // 429 = bloqueo por intentos; cualquier otro, el mensaje generico.
       setError(err.status === 429 ? err.message : "Usuario o contraseña incorrectos");
