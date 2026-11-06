@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Settings, Plus, Layers, ListChecks, AlertCircle, SlidersHorizontal, Briefcase, Lock } from "lucide-react";
+import { Settings, Plus, Layers, ListChecks, AlertCircle, SlidersHorizontal, Briefcase, Lock, Printer } from "lucide-react";
 import { pedir } from "../api";
 import { usePermiso } from "../store/auth";
 import {
@@ -9,8 +9,14 @@ import {
 // Listas que usan las solicitudes y los usuarios. Se agregan o se desactivan;
 // no se renombran ni se borran, porque cada registro guarda el nombre y el
 // historial no debe cambiar.
-const ICONOS = { materiales: <Layers size={14} />, tipos_solicitud: <ListChecks size={14} />, cargos: <Briefcase size={14} /> };
-const PLACEHOLDER = { materiales: "Nuevo tipo de material…", tipos_solicitud: "Nuevo tipo de solicitud…", cargos: "Nuevo cargo…" };
+const ICONOS = {
+  materiales: <Layers size={14} />, tipos_solicitud: <ListChecks size={14} />,
+  tipos_impresion: <Printer size={14} />, cargos: <Briefcase size={14} />,
+};
+const PLACEHOLDER = {
+  materiales: "Nuevo tipo de material…", tipos_solicitud: "Nuevo tipo de solicitud…",
+  tipos_impresion: "Nuevo tipo de impresión…", cargos: "Nuevo cargo…",
+};
 const DESTINO = { cargos: "el formulario de usuarios" };   // por defecto: el de solicitudes
 
 export default function Configuracion() {

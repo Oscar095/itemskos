@@ -428,3 +428,33 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_notificaciones_cola')
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_notificaciones_solicitud')
     CREATE INDEX IX_notificaciones_solicitud ON items.notificaciones(solicitud_id, id);
 GO
+
+/* ============================================================================
+   Tipo de impresion, montaje y etapas de diseño (2026-11-06)
+   ----------------------------------------------------------------------------
+   tipo_impresion: lista "tipos_impresion" de Configuracion (se llena desde el
+     portal; opcional en el formulario). En pantalla: "T. Impresión".
+   montaje: numero que decide el planeador en "Items listos a crear". No se
+     envia a Siesa ni hace falta para crear el item.
+   Etapas: "En Diseño", "En Aprobación", "Envío Muestra" y "Ajuste Arte" van
+     despues de "Solicitud de Diseño". Las existentes conservan su id (el
+     codigo usa 1, 2 y 3) y solo corren su `orden`; el recorrido de la ficha
+     ordena por `orden`, no por id.
+   ============================================================================ */
+IF COL_LENGTH('items.solicitudes', 'tipo_impresion') IS NULL
+    ALTER TABLE items.solicitudes ADD
+        tipo_impresion  nvarchar(60) NULL,
+        montaje         int          NULL CONSTRAINT CK_solicitudes_montaje CHECK (montaje > 0);
+GO
+IF NOT EXISTS (SELECT 1 FROM items.etapas WHERE id = 7)
+BEGIN
+    BEGIN TRAN;
+    UPDATE items.etapas SET orden = orden + 4 WHERE id BETWEEN 2 AND 6;
+    INSERT INTO items.etapas (id, nombre, orden) VALUES
+        (7,  N'En Diseño',     2),
+        (8,  N'En Aprobación', 3),
+        (9,  N'Envío Muestra', 4),
+        (10, N'Ajuste Arte',   5);
+    COMMIT;
+END
+GO

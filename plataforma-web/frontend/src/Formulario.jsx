@@ -17,6 +17,7 @@ const VACIO = {
   tipo_material: "",
   cantidad: "",
   tipo_solicitud: "",
+  tipo_impresion: "",
   vendedor_id: "",
   observaciones: "",
 };
@@ -32,7 +33,7 @@ export default function Formulario({ alCrear }) {
   const vacio = () => ({ ...VACIO, vendedor_id: vendedorFijo });
 
   const [form, setForm] = useState(vacio);
-  const [opciones, setOpciones] = useState({ materiales: [], tipos_solicitud: [] });
+  const [opciones, setOpciones] = useState({ materiales: [], tipos_solicitud: [], tipos_impresion: [] });
   const [calibres, setCalibres] = useState([]);
   const [vendedores, setVendedores] = useState([]);
   const [duplicado, setDuplicado] = useState(null);
@@ -241,12 +242,24 @@ export default function Formulario({ alCrear }) {
                 </div>
               )}
 
-              <div className="col-span-full">
+              <div className="col-span-full sm:col-span-1 lg:col-span-2">
                 <Field label="Tipo de solicitud">
                   <select className={SELECT} value={form.tipo_solicitud}
                           onChange={(e) => set("tipo_solicitud")(e.target.value)}>
                     <option value="">—</option>
                     {opciones.tipos_solicitud.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              {/* Opciones en Configuración → Tipo de impresión. */}
+              <div className="col-span-full sm:col-span-1 lg:col-span-2">
+                <Field label="T. Impresión"
+                       hint={!(opciones.tipos_impresion ?? []).length ? "Aún no hay tipos de impresión: se agregan en Configuración." : null}>
+                  <select className={SELECT} value={form.tipo_impresion}
+                          onChange={(e) => set("tipo_impresion")(e.target.value)}>
+                    <option value="">—</option>
+                    {(opciones.tipos_impresion ?? []).map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </Field>
               </div>

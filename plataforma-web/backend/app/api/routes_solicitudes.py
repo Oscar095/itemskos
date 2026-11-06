@@ -17,7 +17,10 @@ router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
 ETAPA_INICIAL = 1     # Solicitud de Diseño
 ETAPA_APROBACION = 2  # "Aprobación de Diseño": autoriza la creacion (la hace el cargue del planeador)
 # Que modulo de permisos (accion "editar") hace falta para registrar cada etapa.
-ETAPA_MODULO = {1: "diseno", 2: "diseno", 3: "planeacion", 4: "pedidos", 5: "diseno", 6: "planeacion"}
+# 7-10 (En Diseño, En Aprobación, Envío Muestra, Ajuste Arte) van entre la 1 y la 2:
+# el orden del flujo es items.etapas.orden, no el id.
+ETAPA_MODULO = {1: "diseno", 2: "diseno", 3: "planeacion", 4: "pedidos", 5: "diseno", 6: "planeacion",
+                7: "diseno", 8: "diseno", 9: "diseno", 10: "diseno"}
 
 
 class SolicitudNueva(BaseModel):
@@ -31,6 +34,7 @@ class SolicitudNueva(BaseModel):
     cantidad: int = Field(gt=0)
     vendedor_id: int
     tipo_solicitud: Optional[str] = None
+    tipo_impresion: Optional[str] = None
     observaciones: Optional[str] = None
 
 
@@ -42,7 +46,8 @@ class EventoNuevo(BaseModel):
 @router.get("/opciones")
 def opciones():
     # Editables en Configuracion; aqui solo las activas, en su orden.
-    return {"materiales": listas.activas("materiales"), "tipos_solicitud": listas.activas("tipos_solicitud")}
+    return {"materiales": listas.activas("materiales"), "tipos_solicitud": listas.activas("tipos_solicitud"),
+            "tipos_impresion": listas.activas("tipos_impresion")}
 
 
 def duplicado(ref: str, marca: str, cal: str, forzar: bool = False) -> dict:
@@ -106,6 +111,10 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
         s.tipo_solicitud = listas.canonica("tipos_solicitud", s.tipo_solicitud)
         if not s.tipo_solicitud:
             raise HTTPException(400, f"Tipo de solicitud inválido. Válidos: {', '.join(listas.activas('tipos_solicitud'))}.")
+    if s.tipo_impresion:
+        s.tipo_impresion = listas.canonica("tipos_impresion", s.tipo_impresion)
+        if not s.tipo_impresion:
+            raise HTTPException(400, f"Tipo de impresión inválido. Válidos: {', '.join(listas.activas('tipos_impresion'))}.")
     if not s.marca_id and not s.marca_nueva_texto:
         raise HTTPException(400, "Indica una marca existente o el nombre de una marca nueva.")
     if not s.cliente_id and not s.cliente_texto:
@@ -144,12 +153,12 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
             INSERT INTO items.solicitudes
                 (marca_id, marca_nueva_texto, cliente_id, cliente_texto,
                  item_base_referencia, calibre_id, tipo_material, cantidad,
-                 vendedor_id, vendedor_email, vendedor_nombre, tipo_solicitud,
+                 vendedor_id, vendedor_email, vendedor_nombre, tipo_solicitud, tipo_impresion,
                  estado, motivo_bloqueo, observaciones, etapa_actual_id, origen, creado_por)
             OUTPUT INSERTED.id
             VALUES (:marca_id, :marca_nueva, :cliente_id, :cliente_texto,
                     :ref, :calibre, :material, :cantidad,
-                    :vend_id, :vend_email, :vend_nombre, :tipo_sol,
+                    :vend_id, :vend_email, :vend_nombre, :tipo_sol, :tipo_imp,
                     :estado, :motivo, :obs, :etapa, 'web', :creado_por)
         """), {
             "marca_id": s.marca_id, "marca_nueva": s.marca_nueva_texto,
@@ -158,6 +167,7 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
             "material": s.tipo_material, "cantidad": s.cantidad,
             "vend_id": s.vendedor_id, "vend_email": vendedor["email"],
             "vend_nombre": vendedor["nombre"], "tipo_sol": s.tipo_solicitud,
+            "tipo_imp": s.tipo_impresion or None,
             "estado": estado, "motivo": motivo, "obs": s.observaciones,
             "etapa": ETAPA_INICIAL, "creado_por": usuario["nombre"],
         }).first()
@@ -220,7 +230,7 @@ def listar(
     filas = consultar(
         """
         SELECT s.id, s.estado, s.motivo_bloqueo, s.cantidad, s.tipo_material,
-               s.tipo_solicitud, s.fecha_creado, s.sku_creado,
+               s.tipo_solicitud, s.tipo_impresion, s.montaje, s.fecha_creado, s.sku_creado,
                s.vendedor_nombre,
                COALESCE(c.Nombre, s.cliente_texto)        AS cliente,
                COALESCE(m.descripcion, s.marca_nueva_texto) AS marca,
@@ -291,7 +301,7 @@ def detalle(solicitud_id: int, _=Depends(requiere("seguimiento", "ver"))):
 def listar_una(solicitud_id: int):
     return consultar("""
         SELECT s.id, s.estado, s.motivo_bloqueo, s.cantidad, s.tipo_material,
-               s.tipo_solicitud, s.fecha_creado, s.sku_creado, s.observaciones,
+               s.tipo_solicitud, s.tipo_impresion, s.montaje, s.fecha_creado, s.sku_creado, s.observaciones,
                s.vendedor_nombre, s.vendedor_email,
                COALESCE(c.Nombre, s.cliente_texto)          AS cliente,
                COALESCE(m.descripcion, s.marca_nueva_texto) AS marca,

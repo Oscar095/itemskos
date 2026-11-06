@@ -253,8 +253,8 @@ para que las apps de KOS se vean y administren igual.
   |---|---|
   | Admin | Todo |
   | Comercial | Ver seguimiento y adjuntar; crear solicitudes y marcas; registrar Digitación de Pedido |
-  | Diseño | Ver seguimiento y adjuntar; registrar Solicitud/Aprobación de Diseño y Llegada de Planchas |
-  | Planeación | Ver seguimiento y adjuntar; Items listos a crear, cargues, ruta/bodega; Creación de item y En producción |
+  | Diseño | Ver seguimiento y adjuntar; registrar Solicitud de Diseño, En Diseño, En Aprobación, Envío Muestra, Ajuste Arte, Aprobación de Diseño y Llegada de Planchas |
+  | Planeación | Ver seguimiento y adjuntar; Items listos a crear, cargues, ruta/bodega/montaje; Creación de item y En producción |
 
 - El backend valida **cada endpoint** contra la matriz (`requiere(modulo, accion)`), no
   el nombre del rol. Las etapas se mapean en `routes_solicitudes.ETAPA_MODULO`.
@@ -303,7 +303,7 @@ para que las apps de KOS se vean y administren igual.
 
 - Pantalla *Configuración* (módulo de permisos `configuracion`; el Admin lo recibe
   solo al arrancar, como cualquier módulo nuevo que ningún rol tenga aún) con las listas
-  **Tipo de material**, **Tipo de solicitud** y **Cargo** (`items.config_opciones`,
+  **Tipo de material**, **Tipo de solicitud**, **Tipo de impresión** y **Cargo** (`items.config_opciones`,
   `app/opciones.py`; las que el código usa por nombre están en `PROTEGIDAS`).
 - Se agregan o se desactivan; no se renombran ni se borran, porque cada solicitud
   guarda el nombre y el historial no debe cambiar. Sin comas (el histórico separa varios
@@ -312,6 +312,23 @@ para que las apps de KOS se vean y administren igual.
   `sp_getapplock` por lista).
 - La regla Bio Natura / P1 / P2 de `creacion._revisar_material` depende de esos nombres.
 - `tipo_material` pasó de nvarchar(20) a nvarchar(60).
+
+## Tipo de impresión, montaje y etapas de diseño (2026-11-06)
+
+- **T. Impresión** (`solicitudes.tipo_impresion`): desplegable del formulario con la lista
+  *Tipo de impresión* de Configuración (`tipos_impresion`, sin opciones sembradas: se crean
+  desde el portal). Opcional, como Tipo de solicitud. Se ve en el Seguimiento, la ficha,
+  *Items listos a crear* y los correos.
+- **Montaje** (`solicitudes.montaje`, entero 1–9999, opcional): lo decide el planeador en
+  *Items listos a crear*; se guarda como borrador (igual que ruta y bodega) y con el cargue.
+  No se envía a Siesa ni hace falta para crear el item. Columna en el Seguimiento.
+  Después de cargado, la solicitud sale de esa lista y el montaje ya no se edita desde ahí.
+- **Etapas nuevas**, después de *Solicitud de Diseño*: *En Diseño* (7), *En Aprobación* (8),
+  *Envío Muestra* (9) y *Ajuste Arte* (10), las registra Diseño. Las de antes conservan su id
+  (el código usa 1, 2 y 3) y solo corrieron su `orden`. El flujo se ordena por
+  `items.etapas.orden`, nunca por id: la ficha marca como superadas las etapas de orden menor
+  a la más avanzada y resalta la del último evento (tras *Ajuste Arte* puede volver a
+  *En Aprobación*). Cada una le avisa al vendedor por correo, como las demás.
 
 ## Pantallas sin tarjetas de indicadores (2026-10-31)
 
@@ -352,7 +369,7 @@ solo lleva `app/`, `requirements.txt` y `static/`; Oryx hace el `pip install` en
 | Evento | Vendedor | Diseño | Planeación |
 |---|---|---|---|
 | Solicitud registrada (también si nace bloqueada) | ✓ | ✓ | |
-| Etapa registrada (Solicitud de Diseño, Digitación de Pedido, Llegada de Planchas, En producción...) | ✓ | | |
+| Etapa registrada (Solicitud de Diseño, En Diseño, Envío Muestra, Digitación de Pedido, Llegada de Planchas...) | ✓ | | |
 | Aprobación de Diseño → autorizada | ✓ | | ✓ |
 | Aprobación de Diseño → bloqueada, o el item ya existía en Siesa | ✓ | | |
 | Cargue: item creado (o ya existía) | ✓ | | ✓ |

@@ -12,6 +12,7 @@ from app.db.session import consultar
 LISTAS = {
     "materiales": "Tipo de material",
     "tipos_solicitud": "Tipo de solicitud",
+    "tipos_impresion": "Tipo de impresión",
     "cargos": "Cargo",
 }
 MAX_NOMBRE = 60

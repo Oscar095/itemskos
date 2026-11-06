@@ -104,7 +104,9 @@ function Listos({ alContar, alTerminar }) {
     filasRef.current = filasRef.current.map((x) => (afecta(x) ? { ...x, [campo]: valor } : x));
     setFilas(filasRef.current);
     if (!guardar) return;
-    const cuerpo = { ruta_id: f.ruta_id, bodega_asignacion: f.bodega_asignacion, [campo]: valor || null };
+    // El montaje solo viaja cuando es lo que cambio: el backend no lo toca si no viene.
+    const cuerpo = { ruta_id: f.ruta_id, bodega_asignacion: f.bodega_asignacion,
+                     [campo]: campo === "montaje" ? (valor ? Number(valor) : null) : valor || null };
     pedir(`/api/planeacion/listos/${id}`, { method: "PATCH", json: cuerpo })
       .catch((e) => setEnvio({ error: `No se guardó el cambio de ${sol(id)}: ${e.message}` }));
   };
@@ -136,6 +138,7 @@ function Listos({ alContar, alTerminar }) {
           items: seleccion.map((f) => ({
             solicitud_id: f.id, ruta_id: f.ruta_id, bodega: f.bodega_asignacion,
             item_codigo: f.item_codigo ? Number(f.item_codigo) : null,
+            montaje: f.montaje ? Number(f.montaje) : null,
           })),
         },
       }));
@@ -269,10 +272,12 @@ function Listos({ alContar, alTerminar }) {
                   <th className={TH}>Item base</th>
                   <th className={TH}>Marca</th>
                   <th className={TH}>Calibre</th>
+                  <th className={TH}>T. Impresión</th>
                   <th className={`${TH} !text-right`}>Cantidad</th>
                   <th className={TH}>Código item</th>
                   <th className={TH}>Ruta</th>
                   <th className={TH}>Bodega asig.</th>
+                  <th className={TH} title="Opcional: no se envía a Siesa; se ve en el Seguimiento">Montaje</th>
                   <th className={TH}>Estado</th>
                 </tr>
               </thead>
@@ -295,6 +300,7 @@ function Listos({ alContar, alTerminar }) {
                       <p className="text-xs text-slate-400 font-mono">{f.marca_id}</p>
                     </td>
                     <td className={`${TD} font-mono text-xs text-slate-600`}>{f.calibre_id}</td>
+                    <td className={`${TD} text-xs text-slate-600`}>{f.tipo_impresion || <span className="text-slate-300">—</span>}</td>
                     <td className={`${TD} font-mono text-right text-slate-700 font-medium`}>{f.cantidad?.toLocaleString("es-CO")}</td>
                     <td className={TD}>
                       <input type="text" inputMode="numeric" maxLength={7} disabled={!permiso.editar}
@@ -316,6 +322,13 @@ function Listos({ alContar, alTerminar }) {
                         <option value="">—</option>
                         {opciones.bodegas.map((b) => <option key={b} value={b}>{b}</option>)}
                       </select>
+                    </td>
+                    <td className={TD}>
+                      <input type="text" inputMode="numeric" maxLength={4} disabled={!permiso.editar}
+                             className={`${CELDA} w-20 font-mono`} aria-label={`Montaje de ${sol(f.id)}`}
+                             value={f.montaje ?? ""} placeholder="Opcional"
+                             onChange={(e) => cambiar(f.id, "montaje", e.target.value.replace(/\D/g, ""), false)}
+                             onBlur={(e) => cambiar(f.id, "montaje", e.target.value)} />
                     </td>
                     <td className={TD}><EstadoListo f={f} /></td>
                   </tr>
@@ -345,6 +358,7 @@ function Listos({ alContar, alTerminar }) {
                   <p className="text-xs text-slate-500 mt-0.5">
                     ruta <span className="font-mono font-semibold text-slate-700">{f.ruta_id}</span>, bodega{" "}
                     <span className="font-mono font-semibold text-slate-700">{f.bodega_asignacion}</span>
+                    {f.montaje ? <>, montaje <span className="font-mono font-semibold text-slate-700">{f.montaje}</span></> : ", sin montaje"}
                   </p>
                 </li>
               ))}

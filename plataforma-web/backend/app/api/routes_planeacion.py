@@ -15,6 +15,7 @@ class Borrador(BaseModel):
     ruta_id: Optional[str] = None
     bodega_asignacion: Optional[str] = None
     item_codigo: Optional[int] = None
+    montaje: Optional[int] = None   # solo se cambia si viene en el cuerpo (null lo borra)
 
 
 class FilaCargue(BaseModel):
@@ -22,6 +23,7 @@ class FilaCargue(BaseModel):
     ruta_id: str
     bodega: str
     item_codigo: Optional[int] = None
+    montaje: Optional[int] = None
 
 
 class CargueNuevo(BaseModel):
@@ -46,7 +48,8 @@ def listos(_=Depends(requiere("planeacion", "ver"))):
 @router.patch("/listos/{solicitud_id}")
 def guardar(solicitud_id: int, b: Borrador, _=Depends(requiere("planeacion", "editar"))):
     try:
-        planeacion.guardar_borrador(solicitud_id, b.ruta_id, b.bodega_asignacion, b.item_codigo)
+        planeacion.guardar_borrador(solicitud_id, b.ruta_id, b.bodega_asignacion, b.item_codigo,
+                                    b.montaje, con_montaje="montaje" in b.model_fields_set)
     except planeacion.ErrorPlaneacion as exc:
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:  # rutas() sin Siesa y sin cache

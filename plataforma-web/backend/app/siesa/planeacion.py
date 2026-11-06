@@ -72,6 +72,7 @@ def listos() -> list[dict]:
     """
     return consultar("""
         SELECT s.id, s.estado, s.motivo_bloqueo, s.cantidad, s.tipo_material,
+               s.tipo_impresion, s.montaje,
                s.fecha_autorizacion, s.vendedor_nombre,
                s.item_base_referencia AS referencia, b.descripcion AS item_base,
                b.item_id AS item_codigo,
@@ -93,19 +94,35 @@ def listos() -> list[dict]:
     """)
 
 
+MONTAJE_MAX = 9999
+
+
+def _validar_montaje(montaje: int | None) -> None:
+    if montaje is not None and not (0 < int(montaje) <= MONTAJE_MAX):
+        raise ErrorPlaneacion(f"El montaje es un número entero entre 1 y {MONTAJE_MAX}.")
+
+
 def guardar_borrador(solicitud_id: int, ruta_id: str | None, bodega: str | None,
-                     item_codigo: int | None = None) -> None:
-    """Guarda lo que el planeador va eligiendo, para no perderlo al recargar."""
+                     item_codigo: int | None = None, montaje: int | None = None,
+                     con_montaje: bool = False) -> None:
+    """
+    Guarda lo que el planeador va eligiendo, para no perderlo al recargar.
+    El montaje solo se toca si vino en la peticion (con_montaje): vacio lo borra.
+    No se envia a Siesa; lo decide el planeador y se ve en el Seguimiento.
+    """
     if bodega and bodega not in BODEGAS:
         raise ErrorPlaneacion(f"Bodega invalida. Opciones: {', '.join(BODEGAS)}.")
     if ruta_id and ruta_id not in {r["id"] for r in rutas()}:
         raise ErrorPlaneacion(f"La ruta '{ruta_id}' no existe o esta inactiva en Siesa.")
+    if con_montaje:
+        _validar_montaje(montaje)
     with engine.begin() as conn:
         conn.execute(text("""
             UPDATE items.solicitudes SET ruta_id = :ruta, bodega_asignacion = :bodega,
+                   """ + ("montaje = :montaje, " if con_montaje else "") + """
                    fecha_modificado = SYSUTCDATETIME()
              WHERE id = :id
-        """), {"ruta": ruta_id or None, "bodega": bodega or None, "id": solicitud_id})
+        """), {"ruta": ruta_id or None, "bodega": bodega or None, "montaje": montaje, "id": solicitud_id})
         if item_codigo:
             _guardar_codigo(conn, solicitud_id, item_codigo)
 
@@ -170,6 +187,13 @@ def _registrar_cargue(filas: list[dict], usuario: str | None) -> int:
         f["item_codigo"] = f.get("item_codigo") or codigos.get(p["referencia"]) or p["item_codigo"]
         if not f["item_codigo"]:
             problemas.append(f"{etiqueta}: falta el código del item base ({p['referencia']}).")
+        # Opcional: sin montaje se crea igual. Si no vino, queda el del borrador.
+        if "montaje" not in f or f["montaje"] is None:
+            f["montaje"] = p["montaje"]
+        try:
+            _validar_montaje(f["montaje"])
+        except ErrorPlaneacion as exc:
+            problemas.append(f"{etiqueta}: {exc}")
     if problemas:
         raise ErrorPlaneacion(" ".join(problemas))
 
@@ -183,8 +207,8 @@ def _registrar_cargue(filas: list[dict], usuario: str | None) -> int:
                 _guardar_codigo(conn, sid, f["item_codigo"])
             conn.execute(text("""
                 UPDATE items.solicitudes SET ruta_id = :ruta, bodega_asignacion = :bodega,
-                       fecha_modificado = SYSUTCDATETIME() WHERE id = :id
-            """), {"ruta": f["ruta_id"], "bodega": f["bodega"], "id": sid})
+                       montaje = :montaje, fecha_modificado = SYSUTCDATETIME() WHERE id = :id
+            """), {"ruta": f["ruta_id"], "bodega": f["bodega"], "montaje": f["montaje"], "id": sid})
             p = pendientes[sid]
             conn.execute(text("""
                 INSERT INTO items.cargue_detalle

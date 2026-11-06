@@ -99,7 +99,7 @@ def _sin_destinatario(destino: str) -> str:
 def _solicitud(solicitud_id: int) -> dict | None:
     filas = consultar("""
         SELECT s.id, s.estado, s.motivo_bloqueo, s.cantidad, s.tipo_material, s.tipo_solicitud,
-               s.observaciones, s.vendedor_id, s.vendedor_nombre, s.vendedor_email, s.sku_creado,
+               s.tipo_impresion, s.montaje, s.observaciones, s.vendedor_id, s.vendedor_nombre, s.vendedor_email, s.sku_creado,
                COALESCE(c.Nombre, s.cliente_texto)          AS cliente,
                COALESCE(m.descripcion, s.marca_nueva_texto) AS marca,
                s.item_base_referencia                        AS referencia,
@@ -246,6 +246,8 @@ def _ficha(s: dict) -> list[tuple[str, str]]:
         ("Cantidad", f"{s['cantidad']:,}".replace(",", ".") if s["cantidad"] is not None else None),
         ("Material", s["tipo_material"]),
         ("Tipo de solicitud", s["tipo_solicitud"]),
+        ("Tipo de impresión", s["tipo_impresion"]),
+        ("Montaje", s["montaje"]),
         ("Vendedor", s["vendedor_nombre"]),
         ("Estado", s["estado"]),
         ("Etapa actual", s["etapa"]),

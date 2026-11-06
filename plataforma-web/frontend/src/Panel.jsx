@@ -168,7 +168,9 @@ export default function Panel({ recargar }) {
                     <th className={TH}>Marca</th>
                     <th className={TH}>Cliente</th>
                     <th className={TH}>Calibre</th>
+                    <th className={TH}>T. Impresión</th>
                     <th className={`${TH} !text-right`}>Cantidad</th>
+                    <th className={`${TH} !text-right`}>Montaje</th>
                     <th className={TH}>Vendedor</th>
                     <th className={TH}>Etapa</th>
                     <th className={TH}>Estado</th>
@@ -191,8 +193,12 @@ export default function Panel({ recargar }) {
                       <td className="px-5 py-3 text-slate-600">{s.marca}</td>
                       <td className="px-5 py-3 text-slate-600 max-w-[220px] truncate">{s.cliente}</td>
                       <td className="px-5 py-3 font-mono text-xs text-slate-500">{s.calibre || "—"}</td>
+                      <td className="px-5 py-3 text-slate-600">{s.tipo_impresion || <span className="text-slate-300">—</span>}</td>
                       <td className="px-5 py-3 font-mono text-right font-medium text-slate-700">
                         {s.cantidad?.toLocaleString("es-CO")}
+                      </td>
+                      <td className="px-5 py-3 font-mono text-right text-slate-700">
+                        {s.montaje ?? <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-5 py-3 text-slate-600">{s.vendedor_nombre}</td>
                       <td className="px-5 py-3 text-slate-600">{s.etapa_actual || <span className="text-slate-300">—</span>}</td>

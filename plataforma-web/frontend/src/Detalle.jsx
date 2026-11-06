@@ -15,7 +15,11 @@ function tamano(bytes) {
 }
 
 // Quien registra cada etapa: modulo cuyo permiso "editar" la habilita.
-const MODULO_ETAPA = { 1: "diseno", 2: "diseno", 3: "planeacion", 4: "pedidos", 5: "diseno", 6: "planeacion" };
+// 7-10 (En Diseño ... Ajuste Arte) van entre la 1 y la 2: el orden es `orden`, no el id.
+const MODULO_ETAPA = {
+  1: "diseno", 2: "diseno", 3: "planeacion", 4: "pedidos", 5: "diseno", 6: "planeacion",
+  7: "diseno", 8: "diseno", 9: "diseno", 10: "diseno",
+};
 
 const SIN_PERMISOS = {};
 
@@ -133,7 +137,10 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
 
   const s = datos?.solicitud;
   const seguimiento = datos?.seguimiento ?? [];
-  const ultima = Math.max(0, ...seguimiento.map((x) => x.etapa_id));
+  // Hasta donde llego (la etapa mas avanzada, por orden) y donde esta ahora (el
+  // ultimo evento): no coinciden si, p. ej., tras "Ajuste Arte" vuelve a "En Aprobación".
+  const alcanzada = Math.max(0, ...seguimiento.map((x) => x.orden));
+  const actual = seguimiento.length ? seguimiento[seguimiento.length - 1].etapa_id : null;
   const etapasRegistrables = etapas.filter((e) => puedeEtapa(e.id));
 
   return (
@@ -178,6 +185,10 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
                 <Dato label="Cliente">{s.cliente}</Dato>
                 <Dato label="Calibre" mono>{s.calibre || "—"}</Dato>
                 <Dato label="Material">{s.tipo_material}</Dato>
+                <Dato label="T. Impresión">{s.tipo_impresion || <span className="text-slate-400">—</span>}</Dato>
+                <Dato label="Montaje" mono>
+                  {s.montaje ?? <span className="font-sans text-slate-400">lo define el planeador</span>}
+                </Dato>
                 <Dato label="Cantidad" mono>{s.cantidad?.toLocaleString("es-CO")}</Dato>
                 <Dato label="Vendedor">{s.vendedor_nombre}</Dato>
                 <Dato label="Estado"><Pill>{s.estado}</Pill></Dato>
@@ -203,7 +214,7 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
 
             <section>
               <Seccion icon={Route}>Recorrido</Seccion>
-              {/* Las 6 etapas siempre visibles: se ve de un vistazo hasta donde llego
+              {/* Todas las etapas siempre visibles: se ve de un vistazo hasta donde llego
                   y que falta, no solo lo ya ocurrido. */}
               <ol className="relative">
                 {etapas.map((e, i) => {
@@ -213,8 +224,8 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
                   // no tienen registro — pero sí las recorrio. Marcarlas como
                   // pendientes seria mentir; marcarlas igual que las registradas
                   // tambien. Van como "transitadas": recorridas, sin detalle.
-                  const estado = evs.length ? "hecha" : e.id < ultima ? "transitada" : "pend";
-                  const esUltima = e.id === ultima;
+                  const estado = evs.length ? "hecha" : e.orden < alcanzada ? "transitada" : "pend";
+                  const esUltima = e.id === actual;
                   const punto = {
                     hecha: "bg-emerald-500 border-emerald-500",
                     transitada: "bg-blue-200 border-blue-300",
@@ -243,7 +254,7 @@ export default function Detalle({ id, alCerrar, alCambiar }) {
                             </p>
                           </div>
                         ))}
-                        {!evs.length && e.id < ultima && (
+                        {!evs.length && e.orden < alcanzada && (
                           <p className="text-xs text-slate-400 italic mt-0.5">Sin registro — etapa superada</p>
                         )}
                       </div>
