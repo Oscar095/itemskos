@@ -458,3 +458,44 @@ BEGIN
     COMMIT;
 END
 GO
+
+/* ============================================================================
+   Edicion, eliminacion y comentarios de solicitudes (2026-11-12)
+   ----------------------------------------------------------------------------
+   Eliminar es logico (eliminado_en): la solicitud sale de todas las pantallas
+   y de la regla de duplicados, pero su seguimiento, adjuntos, correos y
+   cargues quedan. Editar y eliminar exigen los permisos Editar / Eliminar del
+   modulo "solicitudes" (hoy solo Admin).
+   comentarios.tipo: comentario (de una persona) | edicion | eliminacion (los
+   deja la plataforma como bitacora). comentario_menciones: a quien va dirigido
+   cada comentario; cada mencionado recibe un correo.
+   ============================================================================ */
+IF COL_LENGTH('items.solicitudes', 'eliminado_en') IS NULL
+    ALTER TABLE items.solicitudes ADD
+        eliminado_en   datetime2      NULL,
+        eliminado_por  nvarchar(200)  NULL;
+GO
+IF OBJECT_ID('items.comentarios') IS NULL
+CREATE TABLE items.comentarios (
+    id            int IDENTITY PRIMARY KEY,
+    solicitud_id  int            NOT NULL REFERENCES items.solicitudes(id),
+    usuario_id    int            NULL REFERENCES items.usuarios(id),
+    autor         nvarchar(200)  NOT NULL,
+    texto         nvarchar(2000) NOT NULL,
+    tipo          nvarchar(20)   NOT NULL DEFAULT 'comentario',
+    creado        datetime2      NOT NULL DEFAULT SYSUTCDATETIME()
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_comentarios_solicitud')
+    CREATE INDEX IX_comentarios_solicitud ON items.comentarios(solicitud_id, id);
+GO
+IF OBJECT_ID('items.comentario_menciones') IS NULL
+CREATE TABLE items.comentario_menciones (
+    comentario_id  int NOT NULL REFERENCES items.comentarios(id),
+    usuario_id     int NOT NULL REFERENCES items.usuarios(id),
+    CONSTRAINT PK_comentario_menciones PRIMARY KEY (comentario_id, usuario_id)
+);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_comentario_menciones_usuario')
+    CREATE INDEX IX_comentario_menciones_usuario ON items.comentario_menciones(usuario_id, comentario_id);
+GO

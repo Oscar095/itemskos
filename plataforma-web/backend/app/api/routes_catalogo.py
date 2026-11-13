@@ -31,7 +31,7 @@ def estado():
         UNION ALL
         SELECT 'extensiones', COUNT(1), MAX(actualizado) FROM items.cat_extensiones_existentes
         UNION ALL
-        SELECT 'solicitudes', COUNT(1), MAX(fecha_creado) FROM items.solicitudes
+        SELECT 'solicitudes', COUNT(1), MAX(fecha_creado) FROM items.solicitudes WHERE eliminado_en IS NULL
         UNION ALL
         SELECT 'clientes (PQRS)', COUNT(1), MAX(ActualizadoAt) FROM dbo.PQRS_ClientesSiesa
     """)

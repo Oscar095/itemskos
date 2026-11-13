@@ -125,7 +125,7 @@ def otra_creada(solicitud_id: int | None, ref: str, marca: str, calibre: str) ->
     filas = consultar("""
         SELECT TOP 1 id FROM items.solicitudes
          WHERE item_base_referencia = :ref AND marca_id = :marca AND calibre_id = :cal
-           AND estado = 'Creado' AND id <> :id
+           AND estado = 'Creado' AND id <> :id AND eliminado_en IS NULL
          ORDER BY id DESC
     """, ref=ref, marca=marca, cal=calibre, id=solicitud_id or 0)
     return filas[0]["id"] if filas else None

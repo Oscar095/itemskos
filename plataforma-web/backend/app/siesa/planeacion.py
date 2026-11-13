@@ -88,7 +88,7 @@ def listos() -> list[dict]:
           LEFT JOIN items.cat_marcas m       ON m.id = s.marca_id
           LEFT JOIN items.cat_calibres cal   ON cal.id = s.calibre_id
           LEFT JOIN dbo.PQRS_ClientesSiesa c ON c.Id = s.cliente_id
-         WHERE s.fecha_autorizacion IS NOT NULL
+         WHERE s.fecha_autorizacion IS NOT NULL AND s.eliminado_en IS NULL
            AND (s.estado <> 'Creado' OR ISNULL(s.planeacion_estado, '') <> 'Cargada')
          ORDER BY s.fecha_autorizacion, s.id
     """)

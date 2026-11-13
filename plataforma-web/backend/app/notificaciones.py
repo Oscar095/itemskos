@@ -89,6 +89,8 @@ def _vendedor(s: dict) -> list[dict]:
 def _sin_destinatario(destino: str) -> str:
     if destino == "vendedor":
         return "No se envió: el vendedor no tiene un usuario activo con correo."
+    if destino == "mencion":
+        return "No se envió: la persona etiquetada no tiene correo en su usuario."
     cargo, modulo, _ = DESTINOS[destino]
     return (f"No se envió: no hay usuarios activos con cargo {cargo}, correo y permiso en el "
             f"módulo {modulo}.")
@@ -194,6 +196,13 @@ def _mensajes(evento: str, s: dict, d: dict) -> list[dict]:
                        "No se pudo crear tu item en Siesa",
                        [f"El cargue #{d.get('cargue_id')} no pudo crear el item de {sol}."],
                        [("alerta", d.get("mensaje") or "Siesa rechazó la creación.")])]
+
+    if evento == "mencion":
+        # Uno por persona etiquetada: `gente` trae solo a esa persona.
+        return [correo("mencion", f"{actor} te etiquetó en {sol} · {item}",
+                       f"{actor} te etiquetó en un comentario",
+                       [f"Hola {d.get('nombre') or ''}, {actor} te dejó un comentario en la solicitud {sol}:"],
+                       [("info", d.get("texto") or "")])]
 
     raise ValueError(f"Evento desconocido: {evento}")
 
@@ -305,7 +314,12 @@ def registrar(evento: str, solicitud_id: int, **datos) -> None:
             datos["etapa"] = fila[0]["nombre"] if fila else None
         filas = []
         for m in _mensajes(evento, s, datos):
-            gente = _vendedor(s) if m["destino"] == "vendedor" else _equipo(m["destino"])
+            if m["destino"] == "vendedor":
+                gente = _vendedor(s)
+            elif m["destino"] == "mencion":
+                gente = datos.get("gente") or []
+            else:
+                gente = _equipo(m["destino"])
             para = ", ".join(sorted({g["email"].strip().lower() for g in gente}))
             filas.append({
                 "sol": solicitud_id, "evento": evento, "destino": m["destino"],

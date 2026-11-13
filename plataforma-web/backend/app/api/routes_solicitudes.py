@@ -50,7 +50,7 @@ def opciones():
             "tipos_impresion": listas.activas("tipos_impresion")}
 
 
-def duplicado(ref: str, marca: str, cal: str, forzar: bool = False) -> dict:
+def duplicado(ref: str, marca: str, cal: str, forzar: bool = False, excluir: int | None = None) -> dict:
     """
     Si esa combinacion item base + marca + calibre ya esta creada o pedida:
     {"existe": bool, "mensaje": str, "fuente": "siesa"|"copia", ...}.
@@ -77,8 +77,9 @@ def duplicado(ref: str, marca: str, cal: str, forzar: bool = False) -> dict:
     otra = consultar("""
         SELECT TOP 1 id, estado FROM items.solicitudes
          WHERE item_base_referencia = :ref AND marca_id = :marca AND calibre_id = :cal
+           AND eliminado_en IS NULL AND id <> :excl
          ORDER BY CASE WHEN estado = 'Creado' THEN 0 ELSE 1 END, id DESC
-    """, ref=ref, marca=marca, cal=cal)
+    """, ref=ref, marca=marca, cal=cal, excl=excluir or 0)
     if otra:
         sol = f"SOL-{otra[0]['id']:05d}"
         if otra[0]["estado"] == "Creado":
@@ -189,13 +190,14 @@ def crear(s: SolicitudNueva, usuario: dict = Depends(requiere("solicitudes", "cr
 
 @router.get("")
 def listar(
-    _=Depends(requiere("seguimiento", "ver")),
+    usuario: dict = Depends(requiere("seguimiento", "ver")),
     estado: str = Query("", description="Pendiente | Creado | Bloqueado"),
     cliente: str = Query("", description="filtro por nombre de cliente"),
     referencia: str = Query("", description="filtro por item base"),
     marca: str = Query("", description="filtro por marca"),
     vendedor_id: Optional[int] = None,
     etapa_id: Optional[int] = None,
+    mis_menciones: bool = False,
     limite: int = 50,
     pagina: int = 1,
 ):
@@ -206,16 +208,21 @@ def listar(
     mostrar "(50)" cuando hay 953 que coinciden desinforma.
     """
     filtros = dict(estado=estado, cliente=cliente, referencia=referencia,
-                   marca=marca, vendedor=vendedor_id, etapa=etapa_id)
+                   marca=marca, vendedor=vendedor_id, etapa=etapa_id,
+                   mias=1 if mis_menciones else 0, yo=usuario["id"])
 
     where = """
-         WHERE (:estado = ''    OR s.estado = :estado)
+         WHERE s.eliminado_en IS NULL
+           AND (:estado = ''    OR s.estado = :estado)
            AND (:cliente = ''   OR COALESCE(c.Nombre, s.cliente_texto) LIKE '%' + :cliente + '%')
            AND (:referencia = '' OR s.item_base_referencia LIKE '%' + :referencia + '%'
                                  OR b.descripcion LIKE '%' + :referencia + '%')
            AND (:marca = ''     OR COALESCE(m.descripcion, s.marca_nueva_texto) LIKE '%' + :marca + '%')
            AND (:vendedor IS NULL OR s.vendedor_id = :vendedor)
            AND (:etapa IS NULL    OR s.etapa_actual_id = :etapa)
+           AND (:mias = 0 OR EXISTS (SELECT 1 FROM items.comentarios co
+                                       JOIN items.comentario_menciones cm ON cm.comentario_id = co.id
+                                      WHERE co.solicitud_id = s.id AND cm.usuario_id = :yo))
     """
     joins = """
           FROM items.solicitudes s
@@ -240,6 +247,11 @@ def listar(
                e.nombre                                    AS etapa_actual,
                e.orden                                     AS etapa_orden,
                (SELECT COUNT(1) FROM items.adjuntos a WHERE a.solicitud_id = s.id) AS adjuntos,
+               (SELECT COUNT(1) FROM items.comentarios co
+                 WHERE co.solicitud_id = s.id AND co.tipo = 'comentario') AS comentarios,
+               (SELECT COUNT(1) FROM items.comentarios co
+                  JOIN items.comentario_menciones cm ON cm.comentario_id = co.id
+                 WHERE co.solicitud_id = s.id AND cm.usuario_id = :yo) AS menciones_mias,
                (SELECT MAX(sg.fecha) FROM items.seguimiento sg WHERE sg.solicitud_id = s.id) AS ultimo_movimiento
         """ + joins + where + """
          ORDER BY s.id DESC
@@ -254,11 +266,11 @@ def listar(
 def resumen(_=Depends(requiere("seguimiento", "ver"))):
     """Totales para las tarjetas del panel de visualizacion."""
     por_estado = consultar(
-        "SELECT estado, COUNT(1) AS total FROM items.solicitudes GROUP BY estado")
+        "SELECT estado, COUNT(1) AS total FROM items.solicitudes WHERE eliminado_en IS NULL GROUP BY estado")
     por_etapa = consultar("""
         SELECT e.nombre AS etapa, e.orden, COUNT(s.id) AS total
           FROM items.etapas e
-          LEFT JOIN items.solicitudes s ON s.etapa_actual_id = e.id
+          LEFT JOIN items.solicitudes s ON s.etapa_actual_id = e.id AND s.eliminado_en IS NULL
          GROUP BY e.nombre, e.orden
          ORDER BY e.orden
     """)
@@ -275,6 +287,34 @@ def url_adjunto(adjunto_id: int, _=Depends(requiere("seguimiento", "ver"))):
         raise HTTPException(404, "Adjunto no encontrado")
     return {"url": datalake.url_temporal(filas[0]["blob_path"]),
             "nombre_archivo": filas[0]["nombre_archivo"]}
+
+
+@router.get("/mencionables")
+def mencionables(_=Depends(requiere("seguimiento", "ver"))):
+    """Personas que se pueden etiquetar en un comentario: los usuarios activos."""
+    return consultar("""
+        SELECT id, nombre, username, cargo,
+               CASE WHEN LTRIM(RTRIM(ISNULL(email, ''))) <> '' THEN 1 ELSE 0 END AS tiene_correo
+          FROM items.usuarios WHERE activo = 1 ORDER BY nombre
+    """)
+
+
+def comentarios_de(solicitud_id: int) -> list[dict]:
+    filas = consultar("""
+        SELECT id, usuario_id, autor, texto, tipo, creado
+          FROM items.comentarios WHERE solicitud_id = :id ORDER BY creado, id
+    """, id=solicitud_id)
+    menciones = consultar("""
+        SELECT cm.comentario_id, u.id, u.nombre
+          FROM items.comentario_menciones cm
+          JOIN items.comentarios co ON co.id = cm.comentario_id
+          JOIN items.usuarios u     ON u.id = cm.usuario_id
+         WHERE co.solicitud_id = :id
+    """, id=solicitud_id)
+    for f in filas:
+        f["menciones"] = [{"id": m["id"], "nombre": m["nombre"]}
+                          for m in menciones if m["comentario_id"] == f["id"]]
+    return filas
 
 
 @router.get("/{solicitud_id}")
@@ -295,14 +335,20 @@ def detalle(solicitud_id: int, _=Depends(requiere("seguimiento", "ver"))):
           FROM items.adjuntos WHERE solicitud_id = :id ORDER BY fecha
     """, id=solicitud_id)
     return {"solicitud": filas[0], "seguimiento": seguimiento, "adjuntos": adjuntos,
+            "comentarios": comentarios_de(solicitud_id),
             "notificaciones": notificaciones.de_solicitud(solicitud_id)}
 
 
 def listar_una(solicitud_id: int):
+    """La solicitud (sin las eliminadas: para todo lo demas, ya no existe)."""
     return consultar("""
         SELECT s.id, s.estado, s.motivo_bloqueo, s.cantidad, s.tipo_material,
                s.tipo_solicitud, s.tipo_impresion, s.montaje, s.fecha_creado, s.sku_creado, s.observaciones,
-               s.vendedor_nombre, s.vendedor_email,
+               s.vendedor_nombre, s.vendedor_email, s.vendedor_id,
+               s.marca_id, s.marca_nueva_texto, s.cliente_id, s.cliente_texto, s.calibre_id,
+               CASE WHEN EXISTS (SELECT 1 FROM items.cargue_detalle d
+                                  WHERE d.solicitud_id = s.id AND d.estado = 'En cola')
+                    THEN 1 ELSE 0 END AS en_cargue,
                COALESCE(c.Nombre, s.cliente_texto)          AS cliente,
                COALESCE(m.descripcion, s.marca_nueva_texto) AS marca,
                s.item_base_referencia                        AS referencia,
@@ -316,8 +362,246 @@ def listar_una(solicitud_id: int):
           LEFT JOIN items.cat_items_base b   ON b.referencia = s.item_base_referencia
           LEFT JOIN items.cat_calibres cal   ON cal.id = s.calibre_id
           LEFT JOIN items.etapas e           ON e.id = s.etapa_actual_id
-         WHERE s.id = :id
+         WHERE s.id = :id AND s.eliminado_en IS NULL
     """, id=solicitud_id)
+
+
+# --- comentarios ---------------------------------------------------------------
+
+class ComentarioNuevo(BaseModel):
+    texto: str
+    menciones: list[int] = Field(default_factory=list)
+
+
+MAX_COMENTARIO = 2000
+MAX_MENCIONES = 20
+
+
+def _bitacora(conn, solicitud_id: int, usuario: dict | None, texto: str, tipo: str) -> None:
+    """Comentario que deja la plataforma (edicion, eliminacion): queda en la ficha como historial."""
+    conn.execute(text("""
+        INSERT INTO items.comentarios (solicitud_id, usuario_id, autor, texto, tipo)
+        VALUES (:s, :u, :a, :t, :tipo)
+    """), {"s": solicitud_id, "u": usuario["id"] if usuario else None,
+           "a": usuario["nombre"] if usuario else "Plataforma", "t": texto[:MAX_COMENTARIO], "tipo": tipo})
+
+
+@router.post("/{solicitud_id}/comentarios", status_code=201)
+def comentar(solicitud_id: int, c: ComentarioNuevo, usuario: dict = Depends(requiere("seguimiento", "ver"))):
+    """
+    Comentario en la ficha. `menciones` son los usuarios etiquetados con @: el
+    comentario queda dirigido a ellos y cada uno recibe un correo (menos quien
+    se etiqueta a si mismo).
+    """
+    texto = (c.texto or "").strip()
+    if not texto:
+        raise HTTPException(400, "Escribe el comentario.")
+    if len(texto) > MAX_COMENTARIO:
+        raise HTTPException(400, f"Máximo {MAX_COMENTARIO} caracteres.")
+    ids = list(dict.fromkeys(int(i) for i in c.menciones))
+    if len(ids) > MAX_MENCIONES:
+        raise HTTPException(400, f"Máximo {MAX_MENCIONES} personas por comentario.")
+    if not listar_una(solicitud_id):
+        raise HTTPException(404, "Solicitud no encontrada")
+    gente = []
+    if ids:
+        marcadores = ", ".join(f":m{i}" for i in range(len(ids)))
+        gente = consultar(f"""
+            SELECT id, nombre, email FROM items.usuarios WHERE activo = 1 AND id IN ({marcadores})
+        """, **{f"m{i}": v for i, v in enumerate(ids)})
+        if len(gente) != len(ids):
+            raise HTTPException(400, "Alguna de las personas etiquetadas no existe o está inactiva.")
+
+    with engine.begin() as conn:
+        nuevo = conn.execute(text("""
+            INSERT INTO items.comentarios (solicitud_id, usuario_id, autor, texto, tipo)
+            OUTPUT INSERTED.id VALUES (:s, :u, :a, :t, 'comentario')
+        """), {"s": solicitud_id, "u": usuario["id"], "a": usuario["nombre"], "t": texto}).first()[0]
+        for g in gente:
+            conn.execute(text("INSERT INTO items.comentario_menciones (comentario_id, usuario_id) VALUES (:c, :u)"),
+                         {"c": nuevo, "u": g["id"]})
+
+    for g in gente:
+        if g["id"] != usuario["id"]:
+            notificaciones.registrar("mencion", solicitud_id, actor=usuario["nombre"], texto=texto,
+                                     gente=[g] if (g["email"] or "").strip() else [], nombre=g["nombre"])
+    return {"id": nuevo}
+
+
+# --- edicion y eliminacion (permisos Editar / Eliminar de "solicitudes") ---------
+
+class SolicitudEdicion(SolicitudNueva):
+    montaje: Optional[int] = None
+
+
+def _valor_lista(lista: str, nombre: str | None, actual: str | None, etiqueta: str, obligatorio=False):
+    """Opcion activa de Configuracion. La que la solicitud YA tiene vale aunque la hayan desactivado."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        if obligatorio:
+            raise HTTPException(400, f"Indica el {etiqueta.lower()}.")
+        return None
+    if actual and nombre.lower() == actual.lower():
+        return actual
+    canon = listas.canonica(lista, nombre)
+    if not canon:
+        raise HTTPException(400, f"{etiqueta} inválido. Válidos: {', '.join(listas.activas(lista))}.")
+    return canon
+
+
+# Lo que se compara para la bitacora de la edicion: (campo de listar_una, etiqueta).
+CAMPOS_EDICION = [
+    ("item_base", "Item base"), ("marca", "Marca"), ("cliente", "Cliente"), ("calibre", "Calibre"),
+    ("tipo_material", "Material"), ("cantidad", "Cantidad"), ("vendedor_nombre", "Vendedor"),
+    ("tipo_solicitud", "Tipo de solicitud"), ("tipo_impresion", "T. Impresión"), ("montaje", "Montaje"),
+    ("observaciones", "Observaciones"),
+]
+
+
+@router.put("/{solicitud_id}")
+def editar(solicitud_id: int, s: SolicitudEdicion, usuario: dict = Depends(requiere("solicitudes", "editar"))):
+    """
+    Corrige los datos de una solicitud. Item base, marca y calibre no cambian si
+    el item ya esta creado en Siesa (seria otro item) ni durante un cargue; si
+    cambian, se revisa de nuevo que esa combinacion no exista. El cambio queda
+    como comentario de la plataforma en la ficha.
+    """
+    previas = listar_una(solicitud_id)
+    if not previas:
+        raise HTTPException(404, "Solicitud no encontrada")
+    p = previas[0]
+    if p["en_cargue"]:
+        raise HTTPException(409, "Está en un cargue en proceso: espera a que termine para editarla.")
+
+    material = _valor_lista("materiales", s.tipo_material, p["tipo_material"], "Tipo de material", True)
+    tipo_sol = _valor_lista("tipos_solicitud", s.tipo_solicitud, p["tipo_solicitud"], "Tipo de solicitud")
+    tipo_imp = _valor_lista("tipos_impresion", s.tipo_impresion, p["tipo_impresion"], "Tipo de impresión")
+    if not s.cliente_id and not (s.cliente_texto or "").strip():
+        raise HTTPException(400, "Indica un cliente.")
+    if not s.calibre_id:
+        raise HTTPException(400, "Indica el calibre: sin él no se puede crear el item en Siesa.")
+    if s.montaje is not None and not (0 < s.montaje <= 9999):
+        raise HTTPException(400, "El montaje es un número entero entre 1 y 9999.")
+    if not s.marca_id:
+        if p["marca_id"] or not (s.marca_nueva_texto or "").strip():
+            raise HTTPException(400, "Elige una marca del catálogo de Siesa.")
+
+    claves_antes = (p["referencia"], p["marca_id"], p["calibre_id"])
+    claves = (s.item_base_referencia, s.marca_id, s.calibre_id)
+    if claves != claves_antes:
+        if p["estado"] == "Creado":
+            raise HTTPException(400, "El item ya está creado en Siesa: item base, marca y calibre no se "
+                                     "pueden cambiar (sería otro item). Crea una solicitud nueva.")
+        if s.marca_id:
+            dup = duplicado(*claves, forzar=True, excluir=solicitud_id)
+            if dup["existe"]:
+                raise HTTPException(409, dup["mensaje"])
+
+    if s.vendedor_id == p["vendedor_id"]:
+        vendedor = {"nombre": p["vendedor_nombre"], "email": p["vendedor_email"]}
+    else:
+        vend = consultar("""
+            SELECT nombre, email FROM items.usuarios
+             WHERE vendedor_id = :id AND activo = 1 AND cargo = 'Comercial'
+        """, id=s.vendedor_id)
+        if not vend:
+            raise HTTPException(400, "El vendedor debe ser un usuario activo con cargo Comercial.")
+        vendedor = vend[0]
+
+    # Bloqueada solo por marca inexistente y ahora con marca del catalogo: se libera.
+    estado, motivo = p["estado"], p["motivo_bloqueo"]
+    if s.marca_id and not p["marca_id"] and estado == "Bloqueado":
+        estado, motivo = "Pendiente", None
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE items.solicitudes SET
+                   item_base_referencia = :ref, marca_id = :marca, marca_nueva_texto = :marca_nueva,
+                   cliente_id = :cliente_id, cliente_texto = :cliente_texto, calibre_id = :cal,
+                   tipo_material = :material, cantidad = :cantidad, vendedor_id = :vend_id,
+                   vendedor_email = :vend_email, vendedor_nombre = :vend_nombre,
+                   tipo_solicitud = :tipo_sol, tipo_impresion = :tipo_imp, montaje = :montaje,
+                   observaciones = :obs, estado = :estado, motivo_bloqueo = :motivo,
+                   modificado_por = :quien, fecha_modificado = SYSUTCDATETIME()
+             WHERE id = :id AND eliminado_en IS NULL
+        """), {
+            "ref": s.item_base_referencia, "marca": s.marca_id,
+            "marca_nueva": None if s.marca_id else s.marca_nueva_texto.strip(),
+            "cliente_id": s.cliente_id, "cliente_texto": None if s.cliente_id else s.cliente_texto.strip(),
+            "cal": s.calibre_id, "material": material, "cantidad": s.cantidad,
+            "vend_id": s.vendedor_id, "vend_email": vendedor["email"], "vend_nombre": vendedor["nombre"],
+            "tipo_sol": tipo_sol, "tipo_imp": tipo_imp, "montaje": s.montaje,
+            "obs": (s.observaciones or "").strip() or None, "estado": estado, "motivo": motivo,
+            "quien": usuario["nombre"], "id": solicitud_id,
+        })
+        nueva = listar_una_conn(conn, solicitud_id)
+        cambios = []
+        for campo, etiqueta in CAMPOS_EDICION:
+            a, d = _v(p.get(campo)), _v(nueva.get(campo))
+            if a == d:
+                continue
+            if campo == "observaciones":
+                cambios.append("Observaciones actualizadas")
+            else:
+                cambios.append(f"{etiqueta}: {a if a is not None else '—'} → {d if d is not None else '—'}")
+        if cambios:
+            _bitacora(conn, solicitud_id, usuario, "Editó la solicitud. " + " · ".join(cambios), "edicion")
+    return {"ok": True, "cambios": len(cambios)}
+
+
+def _v(x):
+    """Vacio y None cuentan igual al comparar antes / despues."""
+    return None if x is None or (isinstance(x, str) and not x.strip()) else x
+
+
+def listar_una_conn(conn, solicitud_id: int) -> dict:
+    """Como listar_una, dentro de una transaccion abierta (ve lo que ella acaba de escribir)."""
+    fila = conn.execute(text("""
+        SELECT s.cantidad, s.tipo_material, s.tipo_solicitud, s.tipo_impresion, s.montaje,
+               s.observaciones, s.vendedor_nombre,
+               COALESCE(c.Nombre, s.cliente_texto)          AS cliente,
+               COALESCE(m.descripcion, s.marca_nueva_texto) AS marca,
+               b.descripcion AS item_base, cal.descripcion AS calibre
+          FROM items.solicitudes s
+          LEFT JOIN dbo.PQRS_ClientesSiesa c ON c.Id = s.cliente_id
+          LEFT JOIN items.cat_marcas m       ON m.id = s.marca_id
+          LEFT JOIN items.cat_items_base b   ON b.referencia = s.item_base_referencia
+          LEFT JOIN items.cat_calibres cal   ON cal.id = s.calibre_id
+         WHERE s.id = :id
+    """), {"id": solicitud_id}).mappings().first()
+    return dict(fila) if fila else {}
+
+
+@router.delete("/{solicitud_id}")
+def eliminar(solicitud_id: int, motivo: str = Query("", max_length=500),
+             usuario: dict = Depends(requiere("solicitudes", "eliminar"))):
+    """
+    Eliminacion logica: la solicitud desaparece de las pantallas y de la regla
+    de duplicados (se puede volver a pedir), pero su historial queda en la base.
+    No borra nada en Siesa. Los correos que aun no salieron se cancelan.
+    """
+    previas = listar_una(solicitud_id)
+    if not previas:
+        raise HTTPException(404, "Solicitud no encontrada")
+    if previas[0]["en_cargue"]:
+        raise HTTPException(409, "Está en un cargue en proceso: espera a que termine para eliminarla.")
+    with engine.begin() as conn:
+        hecho = conn.execute(text("""
+            UPDATE items.solicitudes SET eliminado_en = SYSUTCDATETIME(), eliminado_por = :quien,
+                   fecha_modificado = SYSUTCDATETIME()
+             WHERE id = :id AND eliminado_en IS NULL
+        """), {"quien": usuario["nombre"], "id": solicitud_id}).rowcount
+        if not hecho:
+            raise HTTPException(404, "Solicitud no encontrada")
+        conn.execute(text("""
+            UPDATE items.notificaciones SET estado = 'Omitido', detalle = 'No se envió: la solicitud se eliminó.',
+                   actualizado = SYSUTCDATETIME()
+             WHERE solicitud_id = :id AND estado = 'Pendiente'
+        """), {"id": solicitud_id})
+        motivo = " ".join((motivo or "").split())
+        _bitacora(conn, solicitud_id, usuario,
+                  "Eliminó la solicitud." + (f" Motivo: {motivo}" if motivo else ""), "eliminacion")
+    return {"ok": True}
 
 
 @router.post("/{solicitud_id}/seguimiento")

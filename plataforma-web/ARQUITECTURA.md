@@ -330,6 +330,28 @@ para que las apps de KOS se vean y administren igual.
   a la más avanzada y resalta la del último evento (tras *Ajuste Arte* puede volver a
   *En Aprobación*). Cada una le avisa al vendedor por correo, como las demás.
 
+## Editar, eliminar y comentar solicitudes (2026-11-12)
+
+- **Editar** (`PUT /solicitudes/{id}`) y **Eliminar** (`DELETE /solicitudes/{id}?motivo=`) exigen
+  las casillas Editar / Eliminar del módulo *Nueva solicitud* (`solicitudes`); hoy solo Admin las
+  tiene. Botones en la cabecera de la ficha.
+- Edición: los mismos campos del alta más el montaje. Si el item ya está creado en Siesa, item
+  base, marca y calibre quedan fijos (sería otro item); si cambian, se revisa otra vez que la
+  combinación no exista (`duplicado(..., excluir=id)`). Nada se edita ni elimina durante un
+  cargue. Elegir la marca del catálogo en una solicitud bloqueada por marca nueva la libera.
+  Cada edición deja un comentario de la plataforma con lo que cambió (`Cantidad: 100 → 200`).
+- Eliminación **lógica** (`solicitudes.eliminado_en / eliminado_por`): sale del Seguimiento,
+  Planeación, los totales y la regla de duplicados (se puede volver a pedir); seguimiento,
+  adjuntos, correos y cargues quedan. Los correos aún pendientes pasan a `Omitido`. No toca Siesa.
+- **Comentarios** (`items.comentarios`, `items.comentario_menciones`): conversación en la ficha.
+  Con `@` se etiqueta a un usuario activo (`GET /solicitudes/mencionables`); el comentario muestra
+  "Para: …", se resalta para la persona etiquetada y le llega un correo (evento `mencion`,
+  destino `mencion`, uno por persona; nadie recibe correo por etiquetarse a sí mismo). En el
+  Seguimiento hay una columna con el número de comentarios (en ámbar si te etiquetaron) y el
+  filtro **Mis menciones**.
+- La ficha pasó de cajón lateral a panel centrado de dos columnas (datos y comentarios a la
+  izquierda; avance, recorrido, adjuntos y correos a la derecha).
+
 ## Pantallas sin tarjetas de indicadores (2026-10-31)
 
 Por pedido: sin KPIs ni bloques tipo dashboard. Cada pantalla es encabezado + barra de

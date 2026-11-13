@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  ClipboardList, Search, X, ChevronLeft, ChevronRight, Paperclip, FileSearch,
+  AtSign, ClipboardList, Search, X, ChevronLeft, ChevronRight, MessageSquare, Paperclip, FileSearch,
 } from "lucide-react";
 import Detalle from "./Detalle.jsx";
 import { pedir } from "./api";
@@ -10,7 +10,7 @@ import {
 } from "./components/ui";
 
 const FILTROS_VACIOS = {
-  estado: "", cliente: "", referencia: "", marca: "", vendedor_id: "", etapa_id: "",
+  estado: "", cliente: "", referencia: "", marca: "", vendedor_id: "", etapa_id: "", mis_menciones: "",
 };
 const POR_PAGINA = 50;
 
@@ -101,6 +101,18 @@ export default function Panel({ recargar }) {
                 </button>
               ))}
             </div>
+            {/* Las solicitudes donde alguien me etiqueto en un comentario. */}
+            <button
+              type="button"
+              aria-pressed={!!filtros.mis_menciones}
+              onClick={() => setFiltros((f) => ({ ...f, mis_menciones: f.mis_menciones ? "" : "true" }))}
+              className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-full border transition
+                ${filtros.mis_menciones
+                  ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+            >
+              <AtSign size={13} /> Mis menciones
+            </button>
             {hayFiltros && (
               <button
                 type="button"
@@ -203,7 +215,14 @@ export default function Panel({ recargar }) {
                       <td className="px-5 py-3 text-slate-600">{s.vendedor_nombre}</td>
                       <td className="px-5 py-3 text-slate-600">{s.etapa_actual || <span className="text-slate-300">—</span>}</td>
                       <td className="px-5 py-3"><Pill estado={s.estado}>{s.estado}</Pill></td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-5 py-3 text-right whitespace-nowrap space-x-3">
+                        {s.comentarios > 0 && (
+                          <span title={s.menciones_mias ? "Te etiquetaron en un comentario" : `${s.comentarios} comentario(s)`}
+                                className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${s.menciones_mias ? "text-amber-600 font-semibold" : "text-slate-400"}`}>
+                            {s.menciones_mias ? <AtSign size={13} /> : <MessageSquare size={13} />}
+                            <span className="font-mono">{s.comentarios}</span>
+                          </span>
+                        )}
                         {s.adjuntos > 0 && (
                           <span className="inline-flex items-center gap-1 text-xs text-slate-400 whitespace-nowrap" title={`${s.adjuntos} adjunto(s)`}>
                             <Paperclip size={13} />

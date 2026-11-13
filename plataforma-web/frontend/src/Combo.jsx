@@ -44,6 +44,7 @@ export default function Combo({
   placeholder = "Escribe para buscar…",
   crear = null,
   avisoSinAlta = null,
+  textoInicial = null,   // nombre del valor que ya trae (al editar), mientras no se elige otro
 }) {
   const [consulta, setConsulta] = useState("");
   const [opciones, setOpciones] = useState([]);
@@ -125,10 +126,10 @@ export default function Combo({
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 size={15} className="text-blue-600 shrink-0" />
             <span className="font-medium text-slate-700 truncate">
-              {seleccionado ? seleccionado[campoTexto] : valor}
+              {seleccionado ? seleccionado[campoTexto] : textoInicial || valor}
             </span>
-            {seleccionado && (
-              <span className="font-mono text-xs text-slate-400 shrink-0">{seleccionado[campoValor]}</span>
+            {(seleccionado || textoInicial) && (
+              <span className="font-mono text-xs text-slate-400 shrink-0">{seleccionado ? seleccionado[campoValor] : valor}</span>
             )}
           </div>
           <button type="button" onClick={() => { onChange(null); setCreada(null); }}
